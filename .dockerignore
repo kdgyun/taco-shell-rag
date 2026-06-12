@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+.venv
+data
+vendor
+_workspace
+tests
+.agents
+.claude
+**/__pycache__

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "taco-shell-rag"
+version = "0.1.0"
+description = "GPU-only RAG with replaceable connectors and source-first MCP tools"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.28,<0.29",
+  "mcp>=2.3,<3",
+  "pydantic>=2.11,<3",
+  "qdrant-client>=1.19,<2",
+  "uvicorn>=0.35,<1",
+]
+
+[project.optional-dependencies]
+gpu = ["fastapi>=0.156,<1", "sentence-transformers>=6.1,<7", "torch==2.8.0"]
+
+[dependency-groups]
+dev = ["fastapi>=0.156,<1", "pytest>=8,<10", "pytest-asyncio>=1,<2", "ruff>=0.12,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/taco_shell_rag"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch", marker = "sys_platform == 'linux'" }]
