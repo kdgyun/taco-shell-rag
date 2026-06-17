@@ -1,0 +1,7 @@
+# Add this table to taco.toml after adapting the endpoint and field mapping.
+[[sources]]
+id = "support"
+type = "rest"
+url = "https://api.example.com/knowledge"
+token_env = "SUPPORT_API_TOKEN"
+fields = { id = "id", text = "body", title = "title", revision = "revision" }

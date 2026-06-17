@@ -1,6 +1,9 @@
 import json
+import os
 from hashlib import sha256
 from pathlib import Path
+
+import httpx
 
 from taco_shell_rag.core.contracts import Document, Snapshot
 
@@ -49,3 +52,75 @@ class FolderSource:
                 )
             )
         return inventory(documents)
+
+
+class RestSource:
+    """A fixed GET endpoint with cursor pagination; never follows API-provided URLs."""
+
+    def __init__(
+        self,
+        source_id: str,
+        url: str,
+        fields: dict[str, str] | None = None,
+        token_env: str = "",
+        allow_http=False,
+        client: httpx.Client | None = None,
+    ):
+        parsed = httpx.URL(url)
+        if parsed.scheme != "https" and not (allow_http and parsed.scheme == "http"):
+            raise ValueError("REST sources require HTTPS unless allow_http is explicitly set")
+        if parsed.username or parsed.password or parsed.query or parsed.fragment:
+            raise ValueError("keep credentials, query parameters and fragments out of source URLs")
+        self.id, self.url = source_id, url
+        self.fields = fields or {"id": "id", "text": "text", "title": "title", "url": "url"}
+        if not {"id", "text"} <= self.fields.keys() or not set(self.fields) <= {
+            "id",
+            "text",
+            "title",
+            "url",
+            "path",
+            "revision",
+            "updated_at",
+        }:
+            raise ValueError("REST field mapping must include id/text and only document fields")
+        token = os.environ.get(token_env) if token_env else None
+        if token_env and not token:
+            raise ValueError("REST source credential environment variable is unset")
+        self.headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self.client = client or httpx.Client(timeout=30, follow_redirects=False, trust_env=False)
+
+    def scan(self, checkpoint: str | None) -> Snapshot:
+        cursor, seen, documents, total = None, set(), [], 0
+        for _ in range(100):
+            with self.client.stream(
+                "GET", self.url, params={"cursor": cursor} if cursor else {}, headers=self.headers
+            ) as response:
+                if response.status_code != 200:
+                    raise ValueError(f"REST source returned HTTP {response.status_code}")
+                raw = bytearray()
+                for block in response.iter_bytes():
+                    raw.extend(block)
+                    if len(raw) > 4_000_000:
+                        raise ValueError("REST response exceeds its byte bound")
+            total += len(raw)
+            if total > 20_000_000:
+                raise ValueError("REST snapshot exceeds its total byte bound")
+            page = json.loads(raw)
+            if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+                raise ValueError("REST response must contain an items array")
+            for item in page["items"]:
+                if not isinstance(item, dict):
+                    raise ValueError("REST item must be an object")
+                mapped = {name: item.get(field, "") for name, field in self.fields.items()}
+                if not all(isinstance(value, str) for value in mapped.values()) or not mapped["id"]:
+                    raise ValueError("REST document fields must be strings with a nonempty id")
+                documents.append(Document(source_id=self.id, **mapped))
+                if len(documents) > 1000:
+                    raise ValueError("REST snapshot exceeds its document bound")
+            cursor = page.get("next_cursor")
+            if cursor is None:
+                return inventory(documents)
+            if not isinstance(cursor, str) or not cursor or len(cursor) > 1024 or cursor in seen:
+                raise ValueError("REST pagination cursor is invalid or cyclic")
+            seen.add(cursor)
+        raise ValueError("REST pagination exceeded its page bound")
