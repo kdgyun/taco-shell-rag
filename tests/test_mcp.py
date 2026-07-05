@@ -1,7 +1,9 @@
+import httpx
+import pytest
 from mcp import Client
 
 from taco_shell_rag.core.contracts import Document, Snapshot
-from taco_shell_rag.mcp_server import create_server
+from taco_shell_rag.mcp_server import BearerAuth, create_server
 
 
 async def test_actual_mcp_session_search_and_document(kb):
@@ -32,3 +34,20 @@ async def test_actual_mcp_session_search_and_document(kb):
         assert "refund policy" in str(document.content)
         failed = await client.call_tool("search", {"query": "refund", "source_id": "foreign"})
         assert failed.is_error
+
+
+async def test_http_bearer_boundary():
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok"})
+
+    token = "a" * 64
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=BearerAuth(app, token)), base_url="http://test"
+    ) as client:
+        assert (await client.post("/mcp")).status_code == 401
+        assert (
+            await client.post("/mcp", headers={"Authorization": f"Bearer {token}"})
+        ).status_code == 200
+    with pytest.raises(ValueError, match="32"):
+        BearerAuth(app, "short")

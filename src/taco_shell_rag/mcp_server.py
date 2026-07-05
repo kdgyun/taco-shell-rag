@@ -1,3 +1,4 @@
+import hmac
 from typing import Any
 
 from mcp.server import MCPServer
@@ -51,3 +52,26 @@ def create_server(kb: KnowledgeBase) -> MCPServer:
         }
 
     return server
+
+
+class BearerAuth:
+    def __init__(self, app, token: str):
+        if len(token) < 32:
+            raise ValueError("HTTP MCP requires a token of at least 32 characters")
+        self.app, self.token = app, token.encode()
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            headers = dict(scope["headers"])
+            actual = headers.get(b"authorization", b"")
+            if not hmac.compare_digest(actual, b"Bearer " + self.token):
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 401,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b'{"error":"unauthorized"}'})
+                return
+        await self.app(scope, receive, send)
