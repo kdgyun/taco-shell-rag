@@ -1,0 +1,7 @@
+provider = "openai-compatible"
+model = "Qwen/Qwen3-8B"
+base_url = "http://generator:8000/v1"
+token_env = "GENERATOR_TOKEN"
+mode = "agent"
+max_steps = 8
+max_output_tokens = 2048
