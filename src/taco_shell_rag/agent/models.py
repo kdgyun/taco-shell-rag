@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Literal
 
@@ -7,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class GenerationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["openai-compatible"]
+    provider: Literal["openai-compatible", "anthropic"]
     model: str = Field(min_length=1)
     base_url: str = ""
     token_env: str = ""
@@ -34,9 +35,15 @@ class HttpModel:
         self.token = os.environ.get(config.token_env) if config.token_env else None
         if config.token_env and not self.token:
             raise ValueError("generation credential environment variable is unset")
+        if config.provider == "anthropic" and not self.token:
+            raise ValueError(
+                "Anthropic Messages requires its API key, not a Claude CLI OAuth token"
+            )
         self.served_model = None
 
     async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
+        if self.config.provider == "anthropic":
+            return await self._anthropic(messages, tools)
         return await self._openai(messages, tools)
 
     async def _post(self, path, body, headers):
@@ -72,3 +79,74 @@ class HttpModel:
             for key in ["role", "content", "tool_calls", "reasoning_content"]
             if key in message
         }
+
+    async def _anthropic(self, messages, tools):
+        system = "\n".join(m["content"] for m in messages if m["role"] == "system")
+        translated = []
+        for message in messages:
+            role = message["role"]
+            if role == "system":
+                continue
+            if role == "tool":
+                content = [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": message["tool_call_id"],
+                        "content": message["content"],
+                        "is_error": message.get("is_error", False),
+                    }
+                ]
+                role = "user"
+            else:
+                content = (
+                    [{"type": "text", "text": message["content"]}] if message.get("content") else []
+                )
+                for call in message.get("tool_calls", []):
+                    content.append(
+                        {
+                            "type": "tool_use",
+                            "id": call["id"],
+                            "name": call["function"]["name"],
+                            "input": json.loads(call["function"]["arguments"]),
+                        }
+                    )
+            if translated and translated[-1]["role"] == role:
+                translated[-1]["content"].extend(content)
+            else:
+                translated.append({"role": role, "content": content})
+        body = {
+            "model": self.config.model,
+            "system": system,
+            "messages": translated,
+            "max_tokens": self.config.max_output_tokens,
+        }
+        if tools:
+            body["tools"] = [
+                {
+                    "name": t["function"]["name"],
+                    "description": t["function"]["description"],
+                    "input_schema": t["function"]["parameters"],
+                }
+                for t in tools
+            ]
+        data = await self._post(
+            "/messages", body, {"x-api-key": self.token, "anthropic-version": "2023-06-01"}
+        )
+        if data.get("stop_reason") not in {"end_turn", "tool_use"}:
+            raise RuntimeError("Anthropic response is incomplete")
+        calls, texts = [], []
+        for block in data["content"]:
+            if block["type"] == "text":
+                texts.append(block["text"])
+            elif block["type"] == "tool_use":
+                calls.append(
+                    {
+                        "id": block["id"],
+                        "type": "function",
+                        "function": {
+                            "name": block["name"],
+                            "arguments": json.dumps(block["input"]),
+                        },
+                    }
+                )
+        return {"role": "assistant", "content": "\n".join(texts), "tool_calls": calls}
