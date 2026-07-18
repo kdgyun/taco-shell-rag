@@ -1,0 +1,5 @@
+provider = "openai-compatible"
+model = "replace-with-your-served-model"
+base_url = "http://generator:8000/v1"
+token_env = "GENERATOR_TOKEN"
+mode = "rag"
