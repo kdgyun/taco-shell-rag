@@ -5,7 +5,7 @@ import pytest
 from mcp import Client
 
 from taco_shell_rag.agent.models import GenerationConfig, HttpModel
-from taco_shell_rag.agent.runner import run_agent
+from taco_shell_rag.agent.runner import run_agent, run_rag
 from taco_shell_rag.core.contracts import Document, Snapshot
 from taco_shell_rag.mcp_server import create_server
 
@@ -100,6 +100,35 @@ async def test_anthropic_native_tool_result_translation(kb, monkeypatch):
         async with Client(create_server(kb)) as client:
             result = await run_agent("refund?", HttpModel(config, http), client)
     assert result["evidence_reads"] == 1
+
+
+async def test_no_tool_support_uses_explicit_rag_mode(kb):
+    populate(kb)
+
+    def respond(request):
+        body = json.loads(request.content)
+        assert "tools" not in body
+        assert "Refund within seven days" in body["messages"][-1]["content"]
+        return httpx.Response(
+            200,
+            json={
+                "model": "text-only",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "A sourced answer"},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    config = GenerationConfig(
+        provider="openai-compatible", model="text-only", base_url="http://generator/v1", mode="rag"
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        async with Client(create_server(kb)) as client:
+            result = await run_rag("refund?", HttpModel(config, http), client)
+    assert result["mode"] == "rag"
 
 
 async def test_unknown_tool_never_executes_and_budget_is_bounded(kb):
