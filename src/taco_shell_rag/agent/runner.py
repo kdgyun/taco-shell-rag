@@ -108,3 +108,31 @@ async def run_agent(question, model, client, max_steps=8, max_tool_calls=16):
         "trace": trace,
         "evidence_reads": evidence_reads,
     }
+
+
+async def run_rag(question, model, client):
+    # 도구 호출을 지원하지 않는 모델은 이 모드를 명시적으로 선택한다. agent 실패를 감추지 않는다.
+    # Select this mode explicitly for text-only models; never hide an agent failure with it.
+    result = await client.call_tool("search", {"query": question})
+    if result.is_error:
+        raise RuntimeError("initial retrieval failed; generation was not attempted")
+    context = json.dumps(result.structured_content, ensure_ascii=False)
+    if len(context) > 24000:
+        raise ValueError("initial evidence exceeds the context budget")
+    messages = [
+        {"role": "system", "content": SYSTEM},
+        {"role": "user", "content": f"Question: {question}\n\nSource evidence:\n{context}"},
+    ]
+    answer = await model.complete(messages, [])
+    if answer.get("tool_calls"):
+        raise ValueError("RAG mode does not execute model-requested tools")
+    return {
+        "status": "completed",
+        "mode": "rag",
+        "answer": answer.get("content", ""),
+        "provider": model.config.provider,
+        "requested_model": model.config.model,
+        "served_model": model.served_model,
+        "evidence_reads": 1,
+        "retrieval_trace_id": result.structured_content.get("trace_id"),
+    }
