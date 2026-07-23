@@ -1,0 +1,4 @@
+provider = "claude-cli"
+model = "sonnet"
+mode = "agent"
+timeout = 180

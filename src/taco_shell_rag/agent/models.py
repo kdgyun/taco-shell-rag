@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class GenerationConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: Literal["openai-compatible", "anthropic"]
+    provider: Literal["openai-compatible", "anthropic", "claude-cli"]
     model: str = Field(min_length=1)
     base_url: str = ""
     token_env: str = ""
