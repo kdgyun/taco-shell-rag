@@ -1,0 +1,14 @@
+inference_url = "http://inference:8000"
+qdrant_url = "http://qdrant:6333"
+collection = "taco"
+catalog = "data/catalog.sqlite3"
+host = "0.0.0.0"
+port = 8080
+chunk_size = 1000
+overlap = 120
+rerank = true
+
+[[sources]]
+id = "handbook"
+type = "folder"
+path = "examples/knowledge"
