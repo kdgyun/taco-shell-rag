@@ -21,6 +21,9 @@ gpu = ["fastapi>=0.156,<1", "sentence-transformers>=6.1,<7", "torch==2.8.0"]
 [dependency-groups]
 dev = ["fastapi>=0.156,<1", "pytest>=8,<10", "pytest-asyncio>=1,<2", "ruff>=0.12,<1"]
 
+[project.scripts]
+taco = "taco_shell_rag.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/taco_shell_rag"]
 
