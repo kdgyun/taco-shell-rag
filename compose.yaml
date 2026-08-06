@@ -1,0 +1,80 @@
+name: taco-shell-rag
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.17.0
+    restart: unless-stopped
+    volumes:
+      - qdrant:/qdrant/storage
+    networks: [backend]
+
+  inference:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    restart: unless-stopped
+    environment:
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-5617a9f61b028005a4858fdac845db406aefb181}
+      RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
+      RERANKER_MODEL_REVISION: ${RERANKER_MODEL_REVISION:-953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e}
+    volumes:
+      - models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${INFERENCE_GPU_ID:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 15m
+    networks: [backend]
+
+  mcp:
+    build: .
+    restart: unless-stopped
+    command: [--config, /config/taco.toml, serve]
+    environment:
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?run scripts/bootstrap.py first}
+    env_file: ["${RAG_ENV_FILE:-.env}"]
+    volumes:
+      - ./taco.toml:/config/taco.toml:ro
+      - ./examples/knowledge:/config/examples/knowledge:ro
+      - state:/config/data
+    ports:
+      - "127.0.0.1:${MCP_PORT:-8080}:8080"
+    depends_on:
+      inference:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    networks: [backend]
+
+  indexer:
+    build: .
+    profiles: [sync]
+    env_file: ["${RAG_ENV_FILE:-.env}"]
+    command: [--config, /config/taco.toml, sync, --watch]
+    volumes:
+      - ./taco.toml:/config/taco.toml:ro
+      - ./examples/knowledge:/config/examples/knowledge:ro
+      - state:/config/data
+    depends_on:
+      inference:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    networks: [backend]
+
+volumes:
+  qdrant:
+  models:
+  state:
+
+networks:
+  backend:
