@@ -1,0 +1,36 @@
+services:
+  generator:
+    image: ${GENERATOR_IMAGE:?choose a pinned vLLM CUDA image}
+    command:
+      - --model
+      - ${GENERATOR_MODEL:?select a model}
+      - --revision
+      - ${GENERATOR_REVISION:?pin the model revision}
+      - --served-model-name
+      - ${GENERATOR_MODEL}
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - ${GENERATOR_TOOL_CALL_PARSER:?select the parser for this model}
+      - --max-model-len
+      - ${GENERATOR_CONTEXT:-8192}
+      - --gpu-memory-utilization
+      - ${GENERATOR_MEMORY_FRACTION:-0.7}
+    environment:
+      VLLM_API_KEY: ${GENERATOR_TOKEN:?set a private generator token}
+    volumes:
+      - generator-models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${GENERATOR_GPU_ID:-1}"]
+              capabilities: [gpu]
+    networks: [backend]
+
+  mcp:
+    volumes:
+      - ./examples/models:/config/examples/models:ro
+
+volumes:
+  generator-models:
