@@ -9,11 +9,14 @@ from taco_shell_rag.core.contracts import Chunk, Document
 
 
 class Catalog:
-    """Authoritative publication ledger; vector writes alone do not publish a version."""
+    """검색에 노출할 문서 버전을 관리한다. 벡터 저장만으로는 게시되지 않는다.
+
+    Authoritative publication ledger; vector writes alone do not publish a version.
+    """
 
     def __init__(self, path: Path):
         self.path = path
-        path.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -136,6 +139,7 @@ class Catalog:
     def failed(self, source_id: str, kind: str):
         with self.connect() as db:
             # 외부 예외 메시지에는 토큰이나 응답 본문이 섞일 수 있어 그대로 저장하지 않는다.
+            # External exceptions may contain secrets or response bodies; do not persist them.
             db.execute("UPDATE sources SET status='error',error=? WHERE id=?", (kind, source_id))
 
     def status(self):
