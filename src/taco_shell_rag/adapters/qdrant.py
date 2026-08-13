@@ -16,11 +16,7 @@ class QdrantIndex:
                 self.collection,
                 vectors_config=models.VectorParams(size=dimension, distance=models.Distance.COSINE),
             )
-        configured = self.client.get_collection(self.collection).config.params.vectors
-        if not isinstance(configured, models.VectorParams) or configured.size != dimension:
-            raise ValueError("collection vector schema differs from the configured embedding space")
-        if configured.distance != models.Distance.COSINE:
-            raise ValueError("collection must use cosine distance")
+        self.inspect(dimension)
         self.client.create_payload_index(
             self.collection, "source_id", models.PayloadSchemaType.KEYWORD
         )
@@ -30,6 +26,19 @@ class QdrantIndex:
         self.client.create_payload_index(
             self.collection, "version", models.PayloadSchemaType.KEYWORD
         )
+
+    def inspect(self, dimension: int) -> dict:
+        # 점검만으로 빈 컬렉션을 만들지 않는다. 최초 색인은 sync가 담당한다.
+        # Inspection never creates a collection; the first sync owns initialization.
+        if not self.client.collection_exists(self.collection):
+            return {"collection": self.collection, "exists": False, "points": 0}
+        info = self.client.get_collection(self.collection)
+        configured = info.config.params.vectors
+        if not isinstance(configured, models.VectorParams) or configured.size != dimension:
+            raise ValueError("collection vector schema differs from the configured embedding space")
+        if configured.distance != models.Distance.COSINE:
+            raise ValueError("collection must use cosine distance")
+        return {"collection": self.collection, "exists": True, "points": info.points_count}
 
     def upsert(self, chunks: list[Chunk], vectors: list[list[float]]):
         for start in range(0, len(chunks), 64):
