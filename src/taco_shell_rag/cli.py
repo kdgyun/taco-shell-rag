@@ -38,9 +38,15 @@ def main():
             space = kb.inference.space()
             require_gpu(space)
             kb.ledger.check_space(space.fingerprint)
+            vector_index = kb.index.inspect(space.dimension)
             print(
                 json.dumps(
-                    {"ready": True, "embedding_space": asdict(space), "sources": sorted(kb.sources)}
+                    {
+                        "ready": True,
+                        "embedding_space": asdict(space),
+                        "vector_index": vector_index,
+                        "sources": sorted(kb.sources),
+                    }
                 )
             )
         elif args.command == "search":
