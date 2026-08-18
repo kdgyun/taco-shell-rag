@@ -14,6 +14,8 @@ from .runner import SYSTEM
 def run_claude(question: str, config: GenerationConfig):
     if not question.strip() or len(question) > 8000:
         raise ValueError("question must contain 1..8000 characters")
+    if config.mode != "agent":
+        raise ValueError("Claude CLI supports agent mode only; use an HTTP provider for RAG mode")
     import httpx
 
     url = httpx.URL(config.mcp_url)
@@ -74,6 +76,25 @@ def run_claude(question: str, config: GenerationConfig):
         )
         trace, total, pending, final = [], 0, bytearray(), None
         deadline = monotonic() + config.timeout
+
+        def consume(line):
+            nonlocal final
+            if not line.strip():
+                return
+            event = json.loads(line)
+            if event.get("type") == "result":
+                final = event
+            for content in event.get("message", {}).get("content", []):
+                if content.get("type") == "tool_use":
+                    name = content.get("name", "")
+                    if name not in {
+                        "mcp__taco__search",
+                        "mcp__taco__get_document",
+                        "mcp__taco__status",
+                    }:
+                        raise ValueError("Claude attempted an unexpected tool")
+                    trace.append({"tool": name, "id": content.get("id")})
+
         try:
             process.stdin.write(question.encode())
             process.stdin.close()
@@ -82,7 +103,7 @@ def run_claude(question: str, config: GenerationConfig):
                 while selector.get_map():
                     if monotonic() >= deadline:
                         raise TimeoutError("Claude CLI deadline exceeded")
-                    for key, _ in selector.select(timeout=min(1, deadline - monotonic())):
+                    for key, _ in selector.select(timeout=max(0, min(1, deadline - monotonic()))):
                         block = os.read(key.fileobj.fileno(), 65536)
                         if not block:
                             selector.unregister(key.fileobj)
@@ -93,19 +114,10 @@ def run_claude(question: str, config: GenerationConfig):
                         pending.extend(block)
                         while b"\n" in pending:
                             line, _, pending = pending.partition(b"\n")
-                            event = json.loads(line)
-                            if event.get("type") == "result":
-                                final = event
-                            for content in event.get("message", {}).get("content", []):
-                                if content.get("type") == "tool_use":
-                                    name = content.get("name", "")
-                                    if name not in {
-                                        "mcp__taco__search",
-                                        "mcp__taco__get_document",
-                                        "mcp__taco__status",
-                                    }:
-                                        raise ValueError("Claude attempted an unexpected tool")
-                                    trace.append({"tool": name, "id": content.get("id")})
+                            consume(line)
+            # 프로세스가 마지막 줄의 개행 없이 종료해도 완료 이벤트는 처리한다.
+            # Process the final event even when the stream ends without a trailing newline.
+            consume(pending)
             process.wait(timeout=max(0.1, deadline - monotonic()))
             if (
                 process.returncode
