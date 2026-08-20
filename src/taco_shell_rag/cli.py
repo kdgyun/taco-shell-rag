@@ -31,6 +31,22 @@ def main():
     args = parser.parse_args()
     try:
         settings = load_settings(args.config)
+        if args.command == "ask":
+            if args.model_config:
+                from .agent.models import GenerationConfig
+
+                with args.model_config.open("rb") as stream:
+                    settings.generation = GenerationConfig.model_validate(tomllib.load(stream))
+            if settings.generation is None:
+                raise ValueError("configure a generation provider before using ask")
+            if settings.generation.provider == "claude-cli":
+                from .agent.claude_cli import run_claude
+
+                # 원격 MCP를 쓰는 CLI 실행에는 로컬 색인이나 저장소 연결이 필요 없다.
+                # A CLI using remote MCP does not need a local catalog or vector connection.
+                answer = run_claude(args.question, settings.generation)
+                print(json.dumps(answer, ensure_ascii=False, indent=2))
+                return int(answer["status"] != "completed")
         kb = build_knowledge_base(settings, args.config.resolve().parent)
         if args.command == "status":
             print(json.dumps(kb.ledger.status(), indent=2))
@@ -61,37 +77,25 @@ def main():
                     return int(any(result["status"] != "ok" for result in results.values()))
                 time.sleep(args.interval)
         elif args.command == "ask":
-            if args.model_config:
-                from .agent.models import GenerationConfig
+            from mcp import Client
 
-                with args.model_config.open("rb") as stream:
-                    settings.generation = GenerationConfig.model_validate(tomllib.load(stream))
-            if settings.generation is None:
-                raise ValueError("configure a generation provider before using ask")
-            if settings.generation.provider == "claude-cli":
-                from .agent.claude_cli import run_claude
+            from .agent.models import HttpModel
+            from .agent.runner import run_agent, run_rag
+            from .mcp_server import create_server
 
-                answer = run_claude(args.question, settings.generation)
-            else:
-                from mcp import Client
+            async def answer_question():
+                model = HttpModel(settings.generation)
+                try:
+                    async with Client(create_server(kb)) as client:
+                        if settings.generation.mode == "rag":
+                            return await run_rag(args.question, model, client)
+                        return await run_agent(
+                            args.question, model, client, settings.generation.max_steps
+                        )
+                finally:
+                    await model.client.aclose()
 
-                from .agent.models import HttpModel
-                from .agent.runner import run_agent, run_rag
-                from .mcp_server import create_server
-
-                async def answer_question():
-                    model = HttpModel(settings.generation)
-                    try:
-                        async with Client(create_server(kb)) as client:
-                            if settings.generation.mode == "rag":
-                                return await run_rag(args.question, model, client)
-                            return await run_agent(
-                                args.question, model, client, settings.generation.max_steps
-                            )
-                    finally:
-                        await model.client.aclose()
-
-                answer = asyncio.run(answer_question())
+            answer = asyncio.run(answer_question())
             print(json.dumps(answer, ensure_ascii=False, indent=2))
             return int(answer["status"] != "completed")
         else:
