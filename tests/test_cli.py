@@ -1,8 +1,10 @@
 import json
+from types import SimpleNamespace
 
 from qdrant_client import models
 
 from taco_shell_rag import cli
+from taco_shell_rag.agent.models import GenerationConfig
 
 
 def prepare_doctor(kb, monkeypatch):
@@ -41,3 +43,20 @@ def test_doctor_rejects_incompatible_existing_collection(kb, monkeypatch, capsys
     )
     assert cli.main() == 1
     assert not capsys.readouterr().out
+
+
+def test_remote_claude_cli_does_not_build_local_retrieval(monkeypatch, capsys):
+    settings = SimpleNamespace(generation=GenerationConfig(provider="claude-cli", model="test"))
+    monkeypatch.setattr("sys.argv", ["taco", "ask", "refund?"])
+    monkeypatch.setattr(cli, "load_settings", lambda _: settings)
+
+    def unexpected(*_):
+        raise AssertionError("remote MCP must not initialize a local backend")
+
+    monkeypatch.setattr(cli, "build_knowledge_base", unexpected)
+    monkeypatch.setattr(
+        "taco_shell_rag.agent.claude_cli.run_claude",
+        lambda *_: {"status": "completed", "answer": "remote answer"},
+    )
+    assert cli.main() == 0
+    assert json.loads(capsys.readouterr().out)["answer"] == "remote answer"
