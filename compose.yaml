@@ -57,6 +57,7 @@ services:
 
   indexer:
     build: .
+    restart: unless-stopped
     profiles: [sync]
     env_file: ["${RAG_ENV_FILE:-.env}"]
     command: [--config, /config/taco.toml, sync, --watch]

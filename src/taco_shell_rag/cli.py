@@ -71,7 +71,14 @@ def main():
             if args.interval < 10:
                 raise ValueError("watch interval must be at least 10 seconds")
             while True:
-                results = kb.sync()
+                try:
+                    results = kb.sync()
+                except Exception as error:
+                    if not args.watch:
+                        raise
+                    # 추론 서비스가 잠시 중단돼도 감시 루프는 다음 주기에 다시 시도한다.
+                    # A temporary inference outage must not terminate the watch loop.
+                    results = {"sync": {"status": "error", "error": type(error).__name__}}
                 print(json.dumps(results), flush=True)
                 if not args.watch:
                     return int(any(result["status"] != "ok" for result in results.values()))

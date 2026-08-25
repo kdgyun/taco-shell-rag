@@ -1,6 +1,7 @@
 import json
 from types import SimpleNamespace
 
+import pytest
 from qdrant_client import models
 
 from taco_shell_rag import cli
@@ -60,3 +61,30 @@ def test_remote_claude_cli_does_not_build_local_retrieval(monkeypatch, capsys):
     )
     assert cli.main() == 0
     assert json.loads(capsys.readouterr().out)["answer"] == "remote answer"
+
+
+def test_watch_survives_backend_outage_and_retries(monkeypatch, capsys):
+    attempts = 0
+
+    def sync():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise ConnectionError("private response body")
+        return {"notes": {"status": "ok", "changed": 0}}
+
+    def sleep(_):
+        if attempts == 2:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("sys.argv", ["taco", "sync", "--watch", "--interval", "10"])
+    monkeypatch.setattr(cli, "load_settings", lambda _: object())
+    monkeypatch.setattr(cli, "build_knowledge_base", lambda *_: SimpleNamespace(sync=sync))
+    monkeypatch.setattr(cli.time, "sleep", sleep)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main()
+    output = capsys.readouterr().out
+    events = [json.loads(line) for line in output.splitlines()]
+    assert events[0]["sync"] == {"status": "error", "error": "ConnectionError"}
+    assert events[1]["notes"]["status"] == "ok"
+    assert "private response" not in output
