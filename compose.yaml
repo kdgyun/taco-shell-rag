@@ -2,7 +2,7 @@ name: taco-shell-rag
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.17.0
+    image: qdrant/qdrant:v1.19.0
     restart: unless-stopped
     volumes:
       - qdrant:/qdrant/storage
