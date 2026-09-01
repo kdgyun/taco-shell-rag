@@ -49,6 +49,8 @@ class Settings(BaseModel):
     host: str = "127.0.0.1"
     port: int = Field(default=8080, ge=1, le=65535)
     token_env: str = "MCP_AUTH_TOKEN"
+    allowed_hosts: list[str] | None = None
+    allowed_origins: list[str] | None = None
     sources: list[SourceConfig] = Field(min_length=1)
     generation: GenerationConfig | None = None
 
