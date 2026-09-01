@@ -106,19 +106,20 @@ def main():
             print(json.dumps(answer, ensure_ascii=False, indent=2))
             return int(answer["status"] != "completed")
         else:
-            from .mcp_server import BearerAuth, create_server
+            from .mcp_server import create_http_app, create_server
 
-            server = create_server(kb)
             if args.transport == "stdio":
-                server.run(transport="stdio")
+                create_server(kb).run(transport="stdio")
             else:
                 import uvicorn
 
-                app = server.streamable_http_app(
-                    stateless_http=True, json_response=True, host=settings.host
+                app = create_http_app(
+                    kb,
+                    os.environ.get(settings.token_env, ""),
+                    settings.allowed_hosts,
+                    settings.allowed_origins,
                 )
-                authenticated = BearerAuth(app, os.environ.get(settings.token_env, ""))
-                uvicorn.run(authenticated, host=settings.host, port=settings.port)
+                uvicorn.run(app, host=settings.host, port=settings.port)
         return 0
     except Exception as error:
         # 사용자에게 보여 주는 오류에 토큰이나 외부 응답 본문이 섞이지 않게 한다.
