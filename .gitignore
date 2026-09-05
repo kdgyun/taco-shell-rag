@@ -13,3 +13,12 @@ data/
 _workspace/
 .agents/current-state.md
 .agents/session-log.md
+*.local.toml
+AGENTS.local.md
+.DS_Store
+.coverage
+htmlcov/
+.idea/
+.vscode/
+HANDOFF*.md
+handoff*.md
