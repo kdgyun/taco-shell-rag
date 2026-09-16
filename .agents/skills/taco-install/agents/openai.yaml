@@ -1,0 +1,4 @@
+interface:
+  display_name: "Install taco-shell-rag"
+  short_description: "Set up and diagnose the GPU RAG stack"
+  default_prompt: "Use $taco-install to install this repository on a GPU host."
