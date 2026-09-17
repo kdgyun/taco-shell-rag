@@ -87,6 +87,7 @@ class KnowledgeBase:
                             validate_vectors(embedded, len(batch), space.dimension)
                             vectors.extend(embedded)
                         # 벡터 저장이 끝나도 장부에 게시하기 전까지는 검색 결과에 노출하지 않는다.
+                        # Vector writes become visible to search only after ledger activation.
                         self.ledger.prepare_version(document.key, chunks[0].version)
                         self.index.upsert(chunks, vectors)
                         self.ledger.activate(document, chunks)
@@ -160,6 +161,7 @@ class KnowledgeBase:
             times["reranking_ms"] = round((perf_counter() - start) * 1000, 2)
         for row in valid:
             # 검색 결과마다 원문 전체를 반복하지 않는다. 본문은 버전을 지정해 따로 조회한다.
+            # Return bounded chunks here; read full context separately by exact version.
             row["document"].pop("text")
             row["document"].pop("metadata")
         return {
