@@ -7,6 +7,7 @@ def split_document(document: Document, size: int = 1000, overlap: int = 120) -> 
     if not 64 <= size <= 4000 or not 0 <= overlap < size:
         raise ValueError("chunk size must be 64..4000 and overlap smaller than size")
     # 청크 크기를 바꿨을 때 색인이 생략되지 않도록 분할 설정도 버전에 포함한다.
+    # Include chunking settings in the version so a size change triggers reindexing.
     version = sha256(f"{document.content_hash}:{size}:{overlap}:v1".encode()).hexdigest()
     text = document.text
     chunks = []

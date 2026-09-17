@@ -35,6 +35,7 @@ class FolderSource:
             if not path.is_file() or path.suffix.lower() not in {".md", ".txt"}:
                 continue
             # stat 이후 파일이 커질 수도 있으므로 실제로 읽는 바이트 수도 제한한다.
+            # Bound the actual read: the file may grow after a stat call.
             with path.open("rb") as stream:
                 raw = stream.read(self.max_bytes + 1)
             total += len(raw)
@@ -55,7 +56,10 @@ class FolderSource:
 
 
 class RestSource:
-    """A fixed GET endpoint with cursor pagination; never follows API-provided URLs."""
+    """지정된 GET 주소에서 커서로 페이지를 읽는다. 응답에 담긴 URL은 따라가지 않는다.
+
+    A fixed GET endpoint with cursor pagination; never follows API-provided URLs.
+    """
 
     def __init__(
         self,
