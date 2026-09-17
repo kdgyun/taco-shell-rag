@@ -21,6 +21,9 @@ or deployment-local configuration.
 Use ordinary names and direct control flow. Add an abstraction when an actual
 adapter or test needs it. Comments should explain a constraint or decision,
 not translate the next line. Retain input validation and meaningful error handling.
+Use paired Korean and English comments for non-obvious invariants, safety
+boundaries and recovery decisions. Both versions must mean the same thing.
+Do not annotate every line.
 
 Keep third-party attribution and licenses. Never invent test results or performance claims.
 
@@ -30,6 +33,12 @@ Run `uv run pytest` and `uv run ruff check .`. Contract tests use fake inference
 passing them is not a claim that CUDA, real models or GPU containers were tested.
 For deployment changes, validate Compose configuration and run the installation
 doctor. Do not use a production GPU server without explicit authorization.
+
+## Agent entrypoints
+
+Read the `taco-install` skill for installation, recovery or MCP setup. Codex
+discovers it under .agents/skills; Claude Code under .claude/skills. Keep both
+installation instructions aligned with docs/install.md and the actual scripts.
 
 Do not read unrelated .env files, change Git identity, force-push, delete user
 data, install system packages or restart unrelated services without permission.
