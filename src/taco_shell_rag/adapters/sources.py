@@ -96,8 +96,14 @@ class RestSource:
     def scan(self, checkpoint: str | None) -> Snapshot:
         cursor, seen, documents, total = None, set(), [], 0
         for _ in range(100):
+            # 주입된 클라이언트가 리다이렉트를 허용해도 지정한 원본 주소를 벗어나지 않는다.
+            # Stay on the configured source even if an injected client enables redirects.
             with self.client.stream(
-                "GET", self.url, params={"cursor": cursor} if cursor else {}, headers=self.headers
+                "GET",
+                self.url,
+                params={"cursor": cursor} if cursor else {},
+                headers=self.headers,
+                follow_redirects=False,
             ) as response:
                 if response.status_code != 200:
                     raise ValueError(f"REST source returned HTTP {response.status_code}")

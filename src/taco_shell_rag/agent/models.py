@@ -47,8 +47,13 @@ class HttpModel:
         return await self._openai(messages, tools)
 
     async def _post(self, path, body, headers):
+        # 리다이렉트로 API 키와 프롬프트가 다른 호스트에 넘어가지 않게 요청마다 차단한다.
+        # Block redirects per request so API keys and prompts cannot reach another host.
         response = await self.client.post(
-            self.config.base_url.rstrip("/") + path, json=body, headers=headers
+            self.config.base_url.rstrip("/") + path,
+            json=body,
+            headers=headers,
+            follow_redirects=False,
         )
         if not response.is_success:
             raise RuntimeError(f"generation endpoint returned HTTP {response.status_code}")
