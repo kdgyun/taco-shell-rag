@@ -1,0 +1,17 @@
+# 작은 모델은 예시일 뿐이다. 4b·8b 프리셋이나 사용자 모델로 각각 교체할 수 있다.
+# These smaller models are examples; select 4b/8b presets or custom models independently.
+[embedding]
+preset = "qwen3-embedding-0.6b"
+backend = "sentence-transformers"
+device = "cuda:0"
+precision = "float16"
+batch_size = 4
+max_length = 2048
+
+[reranker]
+preset = "qwen3-reranker-0.6b"
+backend = "cross-encoder"
+device = "cuda:0"
+precision = "float16"
+batch_size = 4
+max_length = 512

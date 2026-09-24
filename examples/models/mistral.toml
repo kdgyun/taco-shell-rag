@@ -1,0 +1,7 @@
+provider = "openai-compatible"
+model = "mistralai/Mistral-Small-3.1-24B-Instruct-2503"
+base_url = "http://generator:8000/v1"
+token_env = "GENERATOR_TOKEN"
+mode = "agent"
+max_steps = 8
+max_output_tokens = 2048
