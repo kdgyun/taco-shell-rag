@@ -1,4 +1,5 @@
-inference_url = "http://inference:8000"
+embedding_url = "http://inference:8000"
+reranker_url = "http://inference:8000"
 qdrant_url = "http://qdrant:6333"
 collection = "taco"
 catalog = "data/catalog.sqlite3"

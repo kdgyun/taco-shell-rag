@@ -9,7 +9,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 from .config import build_knowledge_base, load_settings
-from .core.service import require_gpu
+from .core.contracts import EmbeddingSpaceMismatch
+from .core.service import require_gpu, require_reranker
+from .model_config import ModelConfigurationError, load_model_settings, model_catalog
 
 
 def main():
@@ -21,6 +23,8 @@ def main():
     sync.add_argument("--interval", type=int, default=180)
     sub.add_parser("status")
     sub.add_parser("doctor")
+    model_options = sub.add_parser("models")
+    model_options.add_argument("--model-config", type=Path)
     search = sub.add_parser("search")
     search.add_argument("query")
     ask = sub.add_parser("ask")
@@ -30,6 +34,14 @@ def main():
     server.add_argument("--transport", choices=["http", "stdio"], default="http")
     args = parser.parse_args()
     try:
+        if args.command == "models":
+            result = (
+                load_model_settings(args.model_config).model_dump()
+                if args.model_config
+                else model_catalog()
+            )
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         settings = load_settings(args.config)
         if args.command == "ask":
             if args.model_config:
@@ -51,16 +63,21 @@ def main():
         if args.command == "status":
             print(json.dumps(kb.ledger.status(), indent=2))
         elif args.command == "doctor":
-            space = kb.inference.space()
+            space = kb.embedder.space()
             require_gpu(space)
             kb.ledger.check_space(space.fingerprint)
             vector_index = kb.index.inspect(space.dimension)
+            reranker = None
+            if kb.rerank_enabled:
+                reranker = kb.reranker.describe()
+                require_reranker(reranker)
             print(
                 json.dumps(
                     {
                         "ready": True,
                         "embedding_space": asdict(space),
                         "vector_index": vector_index,
+                        "reranker": asdict(reranker) if reranker else None,
                         "sources": sorted(kb.sources),
                     }
                 )
@@ -124,9 +141,20 @@ def main():
     except Exception as error:
         # 사용자에게 보여 주는 오류에 토큰이나 외부 응답 본문이 섞이지 않게 한다.
         # Keep tokens and external response bodies out of public diagnostics.
-        print(
-            f"taco: {type(error).__name__}; check configuration and service health", file=sys.stderr
-        )
+        hint = "check configuration and service health"
+        if isinstance(error, ModelConfigurationError):
+            hint = str(error)
+        elif isinstance(error, EmbeddingSpaceMismatch):
+            hint = (
+                "embedding space changed; check serving model consistency; if the change is "
+                "intended, select a new collection and catalog, then reindex"
+            )
+        elif isinstance(error, PermissionError):
+            hint = (
+                "check config/source read permissions and catalog write permissions "
+                "(container UID 10001); see docs/install.md"
+            )
+        print(f"taco: {type(error).__name__}; {hint}", file=sys.stderr)
         return 1
 
 

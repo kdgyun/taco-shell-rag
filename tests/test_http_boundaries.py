@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from taco_shell_rag.adapters.inference import HttpInference
+from taco_shell_rag.adapters.inference import HttpEmbedder, HttpReranker
 from taco_shell_rag.adapters.sources import RestSource
 from taco_shell_rag.agent.models import GenerationConfig, HttpModel
 
@@ -92,9 +92,19 @@ async def test_model_redirects_never_forward_shared_client_credentials(
         assert requests[0].headers["Authorization"] == "Bearer dummy-api-key"
 
 
-@pytest.mark.parametrize("operation", ["space", "embed", "rerank"])
+@pytest.mark.parametrize(
+    "adapter,operation,args",
+    [
+        (HttpEmbedder, "space", ()),
+        (HttpEmbedder, "embed", (["text"], "document")),
+        (HttpReranker, "describe", ()),
+        (HttpReranker, "rerank", ("query", ["text"])),
+    ],
+)
 @pytest.mark.parametrize("status", [302, 307])
-def test_inference_redirect_policy_overrides_shared_client_defaults(operation, status):
+def test_inference_redirect_policy_overrides_shared_client_defaults(
+    adapter, operation, args, status
+):
     requests = []
 
     def respond(request):
@@ -117,8 +127,7 @@ def test_inference_redirect_policy_overrides_shared_client_defaults(operation, s
         return httpx.Response(status, headers={"location": "https://attacker.invalid/infer"})
 
     with httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=True) as client:
-        inference = HttpInference("https://example.com", client)
-        args = {"space": (), "embed": (["text"], "document"), "rerank": ("query", ["text"])}
+        inference = adapter("https://example.com", client)
         with pytest.raises(httpx.HTTPStatusError, match=str(status)):
-            getattr(inference, operation)(*args[operation])
+            getattr(inference, operation)(*args)
     assert [request.url.host for request in requests] == ["example.com"]
