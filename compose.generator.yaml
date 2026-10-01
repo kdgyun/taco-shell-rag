@@ -1,24 +1,22 @@
 services:
   generator:
     image: ${GENERATOR_IMAGE:?choose a pinned vLLM CUDA image}
-    command:
-      - --model
-      - ${GENERATOR_MODEL:?select a model}
-      - --revision
-      - ${GENERATOR_REVISION:?pin the model revision}
-      - --served-model-name
-      - ${GENERATOR_MODEL}
-      - --enable-auto-tool-choice
-      - --tool-call-parser
-      - ${GENERATOR_TOOL_CALL_PARSER:?select the parser for this model}
-      - --max-model-len
-      - ${GENERATOR_CONTEXT:-8192}
-      - --gpu-memory-utilization
-      - ${GENERATOR_MEMORY_FRACTION:-0.7}
+    entrypoint: [python3, /config/serve_generator.py]
+    command: []
     environment:
       VLLM_API_KEY: ${GENERATOR_TOKEN:?set a private generator token}
+      HF_TOKEN: ${HF_TOKEN:-}
+      GENERATOR_MODEL: ${GENERATOR_MODEL:?select a model}
+      GENERATOR_REVISION: ${GENERATOR_REVISION:?pin the model revision}
+      GENERATOR_TOOL_CALL_PARSER: ${GENERATOR_TOOL_CALL_PARSER:-}
+      GENERATOR_REASONING_PARSER: ${GENERATOR_REASONING_PARSER:-}
+      GENERATOR_CONTEXT: ${GENERATOR_CONTEXT:-8192}
+      GENERATOR_MEMORY_FRACTION: ${GENERATOR_MEMORY_FRACTION:-0.7}
+      GENERATOR_MAX_SEQUENCES: ${GENERATOR_MAX_SEQUENCES:-}
+      GENERATOR_EAGER: ${GENERATOR_EAGER:-false}
     volumes:
       - generator-models:/root/.cache/huggingface
+      - ./scripts/serve_generator.py:/config/serve_generator.py:ro
     deploy:
       resources:
         reservations:
