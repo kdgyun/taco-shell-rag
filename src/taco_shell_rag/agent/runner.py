@@ -30,14 +30,38 @@ async def run_agent(question, model, client, max_steps=8, max_tool_calls=16):
         for tool in listing.tools
         if tool.name in READ_TOOLS
     ]
-    messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": question}]
+    required = set(getattr(model.config, "required_tools", []))
+    system = SYSTEM
+    if required:
+        system += " Before answering, complete these required read tools: " + ", ".join(
+            sorted(required)
+        )
+        system += ". get_document must return nonempty source chunks."
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": question}]
     trace, calls, evidence_reads, evidence_chars = [], 0, 0, 0
+    completed_tools, blocked_completions = set(), 0
     started = perf_counter()
     for _ in range(max_steps):
         turn = await model.complete(messages, tools)
         messages.append(turn)
         requested = turn.get("tool_calls") or []
         if not requested:
+            missing = required - completed_tools
+            if missing:
+                # 필수 읽기가 빠진 초안은 반환하지 않는다. 재시도도 기존 단계 한도를 사용한다.
+                # Withhold drafts missing required reads; retries consume the existing step budget.
+                blocked_completions += 1
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Required reads are not complete: "
+                        + ", ".join(sorted(missing))
+                        + ". Call the required tools with valid inputs before answering. "
+                        "get_document must return nonempty source chunks. "
+                        "The previous draft is not verified evidence.",
+                    }
+                )
+                continue
             return {
                 "trace_id": str(uuid4()),
                 "status": "completed",
@@ -47,6 +71,9 @@ async def run_agent(question, model, client, max_steps=8, max_tool_calls=16):
                 "provider": model.config.provider,
                 "evidence_reads": evidence_reads,
                 "tool_calls": calls,
+                "required_tools": sorted(required),
+                "missing_required_tools": [],
+                "blocked_completions": blocked_completions,
                 "trace": trace,
                 "duration_ms": round((perf_counter() - started) * 1000, 2),
             }
@@ -78,6 +105,19 @@ async def run_agent(question, model, client, max_steps=8, max_tool_calls=16):
                 failed = bool(result.is_error)
                 if not failed and name in {"search", "get_document"}:
                     evidence_reads += 1
+                if not failed:
+                    chunks = data.get("chunks") if isinstance(data, dict) else None
+                    readable = name != "get_document" or (
+                        isinstance(chunks, list)
+                        and any(
+                            isinstance(chunk, dict)
+                            and isinstance(chunk.get("text"), str)
+                            and chunk["text"].strip()
+                            for chunk in chunks
+                        )
+                    )
+                    if readable:
+                        completed_tools.add(name)
             except Exception as error:
                 content = json.dumps(
                     {
@@ -107,12 +147,17 @@ async def run_agent(question, model, client, max_steps=8, max_tool_calls=16):
         "tool_calls": calls,
         "trace": trace,
         "evidence_reads": evidence_reads,
+        "required_tools": sorted(required),
+        "missing_required_tools": sorted(required - completed_tools),
+        "blocked_completions": blocked_completions,
     }
 
 
 async def run_rag(question, model, client):
     # 도구 호출을 지원하지 않는 모델은 이 모드를 명시적으로 선택한다. agent 실패를 감추지 않는다.
     # Select this mode explicitly for text-only models; never hide an agent failure with it.
+    if getattr(model.config, "required_tools", []):
+        raise ValueError("required_tools is supported only by HTTP agent mode")
     result = await client.call_tool("search", {"query": question})
     if result.is_error:
         raise RuntimeError("initial retrieval failed; generation was not attempted")
