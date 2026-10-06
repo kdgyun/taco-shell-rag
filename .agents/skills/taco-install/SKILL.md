@@ -6,20 +6,29 @@ description: Install, connect or diagnose this repository's GPU RAG stack and op
 # Install taco-shell-rag
 
 Read [the installation guide](../../../docs/install.md) before executing commands.
-For generation providers, also read [model configuration](../../../docs/models.md).
+For model selection or replacement, also read [model configuration](../../../docs/models.md).
 Resolve paths from the repository root; never assume the current directory is the root.
 
 Start by inspecting the host and existing deployment. This runtime requires Linux,
-an NVIDIA GPU, its driver, Docker Compose and NVIDIA Container Toolkit. A Mac can
+an NVIDIA GPU, its driver, Docker Compose/Buildx and NVIDIA Container Toolkit. A Mac can
 run contract tests or act as an MCP client, but is not a supported inference host.
 Run `python3 scripts/bootstrap.py --check`; distinguish host checks from actual
 container CUDA access and successful model inference. Never substitute CPU inference.
+Reuse working image-provided drivers/toolkit packages; do not force past package holds.
 
 Keep existing settings and data. Ask for the source directories or API contract,
 the intended GPU and deployment ports when unknown. Use `.env.example` for names
 and explanations; credentials belong in the local `.env`, not the conversation.
 Run `python3 scripts/bootstrap.py --write-env` only when local configuration is
 authorized; it must not overwrite an existing file. Never source `.env` as shell code.
+
+Select embedding, reranking and generation independently. Inference model choices
+belong in models.toml; .env selects its path, credentials and host GPU allocation.
+Inspect presets or resolve a profile with `taco models` before loading weights.
+Support compatible custom identities instead of forcing a preset. Distinguish
+configuration inspection from runtime doctor/search results and real GPU tests.
+For split processes, verify both URLs and GPU mappings; indexing must not depend
+on reranker availability. Do not start roles that the user has disabled.
 
 Explain and obtain approval before system-package installation, Docker daemon
 changes, image/model downloads, starting GPU processes or changing an existing
@@ -39,9 +48,11 @@ different adapters. Do not interchange their credentials. Ask before external
 model calls. Agent mode requires working tool calling; select `rag` explicitly
 for text-only models instead of silently downgrading an agent failure.
 
-For an embedding-model/revision change, use a new collection and catalog and
-reindex. Do not erase the old pair. A generator-only change does not require
-re-embedding. Check the runtime's tool parser, model revision and available VRAM
+For an embedding-model/revision/encoding-option change, use a new collection and
+catalog and reindex. This includes prompt, precision and length changes and the
+initial migration from the legacy option-free fingerprint. Do not erase the old
+pair. A reranker-only or generator-only change does not require re-embedding.
+Check the runtime's tool parser, model revision and available VRAM
 before starting a self-hosted generator. Do not promise that every model fits.
 
 Bind MCP to loopback by default and use SSH forwarding for a remote GPU host.

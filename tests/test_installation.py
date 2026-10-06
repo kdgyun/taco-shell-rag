@@ -1,6 +1,9 @@
 import importlib.util
 import stat
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 from taco_shell_rag.config import load_settings
 
@@ -19,6 +22,25 @@ def test_bootstrap_creates_private_env_once_without_overwriting(tmp_path):
     assert env.read_text() == original
 
 
+def test_host_check_reports_missing_buildx_without_installing(monkeypatch):
+    spec = importlib.util.spec_from_file_location("bootstrap", Path("scripts/bootstrap.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setattr(module.sys, "platform", "linux")
+    monkeypatch.setattr(module.shutil, "which", lambda _: "/test/bin/tool")
+    commands = []
+
+    def run(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(returncode=int(command == ["docker", "buildx", "version"]))
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    checks = module.check_host()
+    assert not checks["buildx"]
+    assert all(value for key, value in checks.items() if key != "buildx")
+    assert ["docker", "buildx", "version"] in commands
+
+
 def test_example_config_and_matching_install_skills():
     config = load_settings(Path("taco.toml"))
     assert config.token_env == "MCP_AUTH_TOKEN"
@@ -27,3 +49,11 @@ def test_example_config_and_matching_install_skills():
         Path(".agents/skills/taco-install/SKILL.md").read_bytes()
         == Path(".claude/skills/taco-install/SKILL.md").read_bytes()
     )
+
+
+@pytest.mark.parametrize("filename", ["Dockerfile", "Dockerfile.gpu"])
+def test_docker_dependencies_are_cached_separately_from_source(filename):
+    dockerfile = Path(filename).read_text()
+    assert dockerfile.index("--no-install-project") < dockerfile.index("COPY src ./src")
+    assert "--mount=type=cache,target=/root/.cache/uv" in dockerfile
+    assert "--link-mode=copy" in dockerfile
