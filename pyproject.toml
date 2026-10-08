@@ -37,6 +37,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["gpu: explicit real-model CUDA integration tests"]
 
 [[tool.uv.index]]
 name = "pytorch"
