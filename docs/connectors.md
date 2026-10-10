@@ -57,11 +57,43 @@ REST API가 이 응답 형식이나 Bearer 인증을 제공하지 않으면 별�
 
 체크포인트는 게시와 정리가 끝난 뒤 코어가 저장한다. 어댑터에서 미리 갱신하지 않는다.
 새 벡터를 저장하는 것과 검색에 새 버전을 게시하는 것도 별개다.
-실패한 벡터 쓰기는 게시하지 않으며, 이전 버전 정리는 재시도할 수 있게 장부에 남긴다.
+실패한 벡터 쓰기는 게시하지 않으며 이전 버전 정리는 재시도할 수 있게 장부에 남긴다.
 
 새 어댑터를 만든 뒤 `config.py`의 `SourceConfig`와 조립 함수에 명시적으로 등록한다.
 코어의 게시·검색 로직을 수정할 필요는 없다. 설정 파일에는 비밀값 대신 환경변수 이름을 적는다.
 컨테이너의 데이터 마운트와 네트워크 권한도 함께 확인한다.
+
+다음은 전체 목록을 읽는 어댑터의 최소 형태다. `client`의 구현과 인증은 어댑터가 맡는다.
+
+```python
+from taco_shell_rag.core.contracts import Document, Snapshot
+
+
+class PolicySource:
+    id = "policies"
+
+    def __init__(self, client):
+        self.client = client
+
+    def scan(self, checkpoint):
+        rows, cursor = self.client.read_all_pages()
+        documents = [
+            Document(
+                id=row["id"],
+                source_id=self.id,
+                text=row["text"],
+                title=row.get("title", ""),
+                url=row.get("url", ""),
+                updated_at=row.get("updated_at", ""),
+            )
+            for row in rows
+        ]
+        return Snapshot(documents, checkpoint=cursor, complete=True)
+```
+
+`read_all_pages()`는 설명용 인터페이스다. 페이지 일부만 받았거나 읽기 권한을 잃었을 때
+정상 목록을 반환하지 않도록 구현하고 그 동작을 가짜 응답으로 검사한다.
+이 코드를 붙여 넣는 것만으로 새 `type`이 설정에 등록되지는 않는다.
 
 ## 교체 후 확인
 
