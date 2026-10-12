@@ -5,6 +5,7 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project --link-mode=copy
 COPY src ./src
+COPY README.md LICENSE ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --link-mode=copy \
     && useradd --uid 10001 --create-home app \

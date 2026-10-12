@@ -57,3 +57,9 @@ def test_docker_dependencies_are_cached_separately_from_source(filename):
     assert dockerfile.index("--no-install-project") < dockerfile.index("COPY src ./src")
     assert "--mount=type=cache,target=/root/.cache/uv" in dockerfile
     assert "--link-mode=copy" in dockerfile
+
+
+@pytest.mark.parametrize("filename", ["Dockerfile", "Dockerfile.gpu"])
+def test_docker_project_build_copies_readme_and_license_metadata(filename):
+    dockerfile = Path(filename).read_text()
+    assert dockerfile.index("COPY README.md LICENSE ./") < dockerfile.index("--no-editable")

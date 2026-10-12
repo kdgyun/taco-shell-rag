@@ -9,6 +9,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && useradd --uid 10001 --create-home app \
     && mkdir -p /models && chown app:app /models && chmod 700 /models
 COPY src ./src
+COPY README.md LICENSE ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --extra gpu --no-dev --no-editable --link-mode=copy
 ENV HF_HOME=/models

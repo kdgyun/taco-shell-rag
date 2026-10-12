@@ -6,6 +6,9 @@ build-backend = "hatchling.build"
 name = "taco-shell-rag"
 version = "0.1.0"
 description = "GPU-only RAG with replaceable connectors and source-first MCP tools"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
   "httpx>=0.28,<0.29",
@@ -26,6 +29,18 @@ taco = "taco_shell_rag.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/taco_shell_rag"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "src", "tests", "examples", "scripts/bootstrap.py", "scripts/serve_generator.py",
+  "scripts/check_release.py",
+  "docs/install.md", "docs/models.md", "docs/connectors.md", "docs/architecture.md",
+  ".agents/skills/taco-install", ".claude/skills/taco-install",
+  "README.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md", "CLAUDE.md",
+  ".gitignore", ".dockerignore", ".env.example",
+  "Dockerfile", "Dockerfile.gpu", "compose.yaml", "compose.generator.yaml",
+  "compose.inference-split.yaml", "models.toml", "taco.toml", "pyproject.toml", "uv.lock",
+]
 
 [tool.ruff]
 target-version = "py311"
