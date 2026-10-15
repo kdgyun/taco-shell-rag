@@ -5,7 +5,17 @@ from time import perf_counter
 from uuid import uuid4
 
 from .chunking import split_document
-from .contracts import EmbeddingSpace, Inference, PublicationLedger, Source, VectorIndex
+from .contracts import (
+    Embedder,
+    EmbeddingResult,
+    EmbeddingSpace,
+    EmbeddingSpaceMismatch,
+    PublicationLedger,
+    Reranker,
+    RerankerInfo,
+    Source,
+    VectorIndex,
+)
 
 
 def now() -> str:
@@ -13,12 +23,22 @@ def now() -> str:
 
 
 def require_gpu(space: EmbeddingSpace):
-    if space.device != "cuda" and not (
-        space.device.startswith("cuda:") and space.device[5:].isdigit()
-    ):
-        raise ValueError("inference must report an actual CUDA device; CPU fallback is disabled")
+    require_cuda_device(space.device)
     if space.dimension < 1 or not space.model or not space.revision:
         raise ValueError("inference must identify its model, immutable revision and dimension")
+
+
+def require_cuda_device(device: str):
+    if device != "cuda" and not (device.startswith("cuda:") and device[5:].isdigit()):
+        raise ValueError("inference must report an actual CUDA device; CPU fallback is disabled")
+
+
+def require_reranker(info: RerankerInfo):
+    require_cuda_device(info.device)
+    if not info.model or not info.revision or not info.backend:
+        raise ValueError("reranker must identify its model, revision and backend")
+    if info.score_kind != "reranker_raw_uncalibrated":
+        raise ValueError("reranker must return uncalibrated raw scores, not confidence claims")
 
 
 def validate_vectors(vectors: list[list[float]], count: int, dimension: int):
@@ -31,18 +51,31 @@ def validate_vectors(vectors: list[list[float]], count: int, dimension: int):
         raise ValueError("embedding response has invalid count, dimension or values")
 
 
+def validate_embedding(result: EmbeddingResult, expected: EmbeddingSpace, count: int):
+    require_gpu(result.space)
+    # 상태 조회 후 모델이 교체돼도 다른 공간의 벡터를 게시하거나 검색에 쓰지 않는다.
+    # Reject execution-space changes after health checks, before publishing or searching.
+    if result.space.fingerprint != expected.fingerprint:
+        raise EmbeddingSpaceMismatch("embedding execution space changed; check the serving model")
+    validate_vectors(result.vectors, count, expected.dimension)
+
+
 class KnowledgeBase:
     def __init__(
         self,
         ledger: PublicationLedger,
-        inference: Inference,
+        embedder: Embedder,
         index: VectorIndex,
         sources: list[Source],
         chunk_size=1000,
         overlap=120,
         rerank=True,
+        reranker: Reranker | None = None,
     ):
-        self.ledger, self.inference, self.index = ledger, inference, index
+        self.ledger, self.embedder, self.index = ledger, embedder, index
+        self.reranker = reranker
+        if rerank and reranker is None:
+            raise ValueError("rerank requires an explicit reranker adapter")
         self.sources = {source.id: source for source in sources}
         if len(self.sources) != len(sources):
             raise ValueError("source IDs must be unique")
@@ -51,7 +84,7 @@ class KnowledgeBase:
     def sync(self) -> dict:
         results = {}
         with self.ledger.writer():
-            space = self.inference.space()
+            space = self.embedder.space()
             require_gpu(space)
             self.ledger.check_space(space.fingerprint, initialize=True)
             self.index.setup(space.dimension)
@@ -83,9 +116,9 @@ class KnowledgeBase:
                         vectors = []
                         for start in range(0, len(chunks), 16):
                             batch = chunks[start : start + 16]
-                            embedded = self.inference.embed([c.text for c in batch], "document")
-                            validate_vectors(embedded, len(batch), space.dimension)
-                            vectors.extend(embedded)
+                            embedded = self.embedder.embed([c.text for c in batch], "document")
+                            validate_embedding(embedded, space, len(batch))
+                            vectors.extend(embedded.vectors)
                         # 벡터 저장이 끝나도 장부에 게시하기 전까지는 검색 결과에 노출하지 않는다.
                         # Vector writes become visible to search only after ledger activation.
                         self.ledger.prepare_version(document.key, chunks[0].version)
@@ -114,11 +147,12 @@ class KnowledgeBase:
             raise ValueError("unknown source ID")
         times = {}
         start = perf_counter()
-        space = self.inference.space()
+        space = self.embedder.space()
         require_gpu(space)
         self.ledger.check_space(space.fingerprint)
-        vectors = self.inference.embed([query], "query")
-        validate_vectors(vectors, 1, space.dimension)
+        embedded = self.embedder.embed([query], "query")
+        validate_embedding(embedded, space, 1)
+        vectors = embedded.vectors
         times["embedding_ms"] = round((perf_counter() - start) * 1000, 2)
         start = perf_counter()
         candidate_limit = max(40, limit * 8)
@@ -149,15 +183,19 @@ class KnowledgeBase:
             valid.append({"document": asdict(document), "chunk": asdict(chunk), "score": hit.score})
         times["retrieval_ms"] = round((perf_counter() - start) * 1000, 2)
         score_kind = "cosine"
+        reranker_info = None
         if self.rerank_enabled and valid:
             start = perf_counter()
-            scores = self.inference.rerank(query, [row["chunk"]["text"] for row in valid])
+            result = self.reranker.rerank(query, [row["chunk"]["text"] for row in valid])
+            require_reranker(result.info)
+            scores = result.scores
             if len(scores) != len(valid) or not all(isfinite(s) for s in scores):
                 raise ValueError("reranker returned invalid scores")
             for row, score in zip(valid, scores, strict=True):
                 row["score"] = score
             valid.sort(key=lambda row: row["score"], reverse=True)
-            score_kind = "reranker_raw_uncalibrated"
+            score_kind = result.info.score_kind
+            reranker_info = asdict(result.info)
             times["reranking_ms"] = round((perf_counter() - start) * 1000, 2)
         for row in valid:
             # 검색 결과마다 원문 전체를 반복하지 않는다. 본문은 버전을 지정해 따로 조회한다.
@@ -170,6 +208,8 @@ class KnowledgeBase:
             "observed_at": now(),
             "embedding_space": asdict(space),
             "score_kind": score_kind,
+            "reranker": reranker_info,
+            "rerank_enabled": self.rerank_enabled,
             "candidate_count": len(hits),
             "discarded_candidates": discarded,
             "candidate_limit_reached": len(hits) >= candidate_limit,

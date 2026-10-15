@@ -3,7 +3,7 @@ import os
 from typing import Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class GenerationConfig(BaseModel):
@@ -19,6 +19,15 @@ class GenerationConfig(BaseModel):
     mode: Literal["agent", "rag"] = "agent"
     mcp_url: str = "http://127.0.0.1:8080/mcp"
     mcp_token_env: str = "MCP_AUTH_TOKEN"
+    required_tools: list[Literal["search", "get_document", "status"]] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_required_tools(self):
+        if len(self.required_tools) != len(set(self.required_tools)):
+            raise ValueError("required_tools must be unique")
+        if self.required_tools and (self.provider == "claude-cli" or self.mode != "agent"):
+            raise ValueError("required_tools is supported only by HTTP agent mode")
+        return self
 
 
 class HttpModel:

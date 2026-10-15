@@ -4,11 +4,11 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from qdrant_client import QdrantClient
 
 from .adapters.catalog import Catalog
-from .adapters.inference import HttpInference
+from .adapters.inference import HttpEmbedder, HttpReranker
 from .adapters.qdrant import QdrantIndex
 from .adapters.sources import FolderSource, RestSource
 from .agent.models import GenerationConfig
@@ -38,7 +38,13 @@ class SourceConfig(BaseModel):
 
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    inference_url: str = "http://inference:8000"
+    embedding_url: str = Field(
+        default="http://inference:8000",
+        validation_alias=AliasChoices("embedding_url", "inference_url"),
+    )
+    reranker_url: str | None = None
+    embedding_token_env: str = Field(default="", pattern=r"^([A-Z][A-Z0-9_]*)?$")
+    reranker_token_env: str = Field(default="", pattern=r"^([A-Z][A-Z0-9_]*)?$")
     qdrant_url: str = "http://qdrant:6333"
     qdrant_token_env: str = ""
     collection: str = Field(default="taco", pattern=r"^[a-zA-Z][a-zA-Z0-9_-]{0,63}$")
@@ -79,18 +85,29 @@ def build_knowledge_base(settings: Settings, config_dir: Path) -> KnowledgeBase:
                     source.id, source.url, source.fields, source.token_env, source.allow_http
                 )
             )
-    api_key = os.environ.get(settings.qdrant_token_env) if settings.qdrant_token_env else None
-    if settings.qdrant_token_env and not api_key:
-        raise ValueError("Qdrant credential environment variable is unset")
+
+    def credential(name):
+        value = os.environ.get(name) if name else None
+        if name and not value:
+            raise ValueError("configured credential environment variable is unset")
+        return value
+
+    api_key = credential(settings.qdrant_token_env)
     index = QdrantIndex(
         QdrantClient(settings.qdrant_url, api_key=api_key, timeout=30), settings.collection
     )
     return KnowledgeBase(
         Catalog(config_dir / settings.catalog),
-        HttpInference(settings.inference_url),
+        HttpEmbedder(settings.embedding_url, token=credential(settings.embedding_token_env)),
         index,
         sources,
         settings.chunk_size,
         settings.overlap,
         settings.rerank,
+        HttpReranker(
+            settings.reranker_url or settings.embedding_url,
+            token=credential(settings.reranker_token_env),
+        )
+        if settings.rerank
+        else None,
     )

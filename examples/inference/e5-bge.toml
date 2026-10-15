@@ -1,0 +1,15 @@
+[embedding]
+preset = "multilingual-e5-large"
+backend = "sentence-transformers"
+device = "cuda:0"
+precision = "float32"
+batch_size = 8
+max_length = 512
+
+[reranker]
+preset = "bge-reranker-large"
+backend = "cross-encoder"
+device = "cuda:0"
+precision = "float32"
+batch_size = 8
+max_length = 512

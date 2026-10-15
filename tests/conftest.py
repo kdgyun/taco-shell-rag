@@ -5,11 +5,16 @@ from qdrant_client import QdrantClient
 
 from taco_shell_rag.adapters.catalog import Catalog
 from taco_shell_rag.adapters.qdrant import QdrantIndex
-from taco_shell_rag.core.contracts import EmbeddingSpace
+from taco_shell_rag.core.contracts import (
+    EmbeddingResult,
+    EmbeddingSpace,
+    RerankerInfo,
+    RerankResult,
+)
 from taco_shell_rag.core.service import KnowledgeBase
 
 
-class FakeInference:
+class FakeEmbedder:
     def __init__(self):
         self.info = EmbeddingSpace("test-only", "fixed-test-revision", 3, "cuda:0")
         self.fail = False
@@ -22,26 +27,42 @@ class FakeInference:
         if self.fail:
             raise RuntimeError("test failure")
         self.embedded += len(texts)
-        return [[1.0, float("refund" in text.lower()), 0.2] for text in texts]
-
-    def rerank(self, query, texts):
-        return [float(query.lower() in text.lower()) for text in texts]
+        vectors = [[1.0, float("refund" in text.lower()), 0.2] for text in texts]
+        return EmbeddingResult(vectors, self.info)
 
     def cpu(self):
         self.info = replace(self.info, device="cpu")
 
 
+class FakeReranker:
+    def __init__(self):
+        self.info = RerankerInfo("test-reranker", "fixed-test-revision", "cuda:0", "fake-test")
+        self.fail = False
+        self.calls = 0
+
+    def describe(self):
+        if self.fail:
+            raise ConnectionError("fake reranker unavailable")
+        return self.info
+
+    def rerank(self, query, texts):
+        self.calls += 1
+        scores = [float(query.lower() in text.lower()) for text in texts]
+        return RerankResult(scores, self.describe())
+
+
 @pytest.fixture
 def kb(tmp_path):
-    inference = FakeInference()
+    embedder = FakeEmbedder()
     client = QdrantClient(":memory:")
     service = KnowledgeBase(
         Catalog(tmp_path / "state.sqlite3"),
-        inference,
+        embedder,
         QdrantIndex(client, "test"),
         [],
         chunk_size=64,
         overlap=8,
+        reranker=FakeReranker(),
     )
     yield service
     client.close()

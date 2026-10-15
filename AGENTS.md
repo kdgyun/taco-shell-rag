@@ -7,6 +7,9 @@ or deployment-local configuration.
 ## Boundaries
 
 - Core contracts and services must not import MCP, Qdrant, HTTP clients or model libraries.
+- Keep model roles, data sources and execution backends independently selectable.
+  Defaults and presets are conveniences, not hidden dependencies or a custom-model allowlist.
+  Expose resolved choices and reject incompatible settings instead of silently changing models.
 - Adapters implement the core protocols. Wire implementations at the application entrypoint.
 - GPU inference requires CUDA. Do not add a CPU deployment or silent device fallback.
 - Search returns source evidence, timestamps and limitations. The caller owns the answer.

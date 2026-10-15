@@ -160,3 +160,113 @@ def test_anthropic_requires_an_api_key_not_ambient_cli_oauth(monkeypatch):
     config = GenerationConfig(provider="anthropic", model="test", base_url="https://api.example/v1")
     with pytest.raises(ValueError, match="API key"):
         HttpModel(config)
+
+
+async def test_required_document_read_withholds_draft_then_allows_verified_tool_flow(kb):
+    populate(kb)
+    record = kb.search("refund")["results"][0]["chunk"]
+
+    class Model:
+        config = GenerationConfig(
+            provider="openai-compatible", model="test", required_tools=["get_document"]
+        )
+        served_model = "test"
+        count = 0
+
+        async def complete(self, messages, tools):
+            self.count += 1
+            if self.count == 2:
+                assert messages[-1]["role"] == "user"
+                assert "Required reads" in messages[-1]["content"]
+                return {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "document-1",
+                            "function": {
+                                "name": "get_document",
+                                "arguments": json.dumps(
+                                    {
+                                        "document_key": record["document_key"],
+                                        "version": record["version"],
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                }
+            return {
+                "role": "assistant",
+                "content": "unverified" if self.count == 1 else "read answer",
+            }
+
+    async with Client(create_server(kb)) as client:
+        result = await run_agent("refund?", Model(), client, max_steps=3)
+    assert result["status"] == "completed" and result["answer"] == "read answer"
+    assert result["blocked_completions"] == 1
+    assert result["missing_required_tools"] == []
+
+
+async def test_ignored_required_reads_never_complete_and_remain_bounded(kb):
+    class Model:
+        config = GenerationConfig(
+            provider="openai-compatible", model="test", required_tools=["get_document"]
+        )
+        served_model = "test"
+
+        async def complete(self, messages, tools):
+            return {"role": "assistant", "content": "unsupported draft"}
+
+    async with Client(create_server(kb)) as client:
+        result = await run_agent("refund?", Model(), client, max_steps=2)
+    assert result["status"] == "budget_exhausted" and result["answer"] is None
+    assert result["missing_required_tools"] == ["get_document"]
+    assert result["blocked_completions"] == 2
+
+
+@pytest.mark.parametrize("provider,mode", [("claude-cli", "agent"), ("openai-compatible", "rag")])
+def test_unobservable_required_tools_are_rejected(provider, mode):
+    with pytest.raises(ValueError, match="HTTP agent"):
+        GenerationConfig(
+            provider=provider, model="test", mode=mode, required_tools=["get_document"]
+        )
+
+
+async def test_empty_document_window_does_not_satisfy_required_read(kb):
+    populate(kb)
+    chunk = kb.search("refund")["results"][0]["chunk"]
+
+    class Model:
+        config = GenerationConfig(
+            provider="openai-compatible", model="test", required_tools=["get_document"]
+        )
+        served_model = "test"
+        count = 0
+
+        async def complete(self, messages, tools):
+            self.count += 1
+            if self.count == 1:
+                return {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "empty-read",
+                            "function": {
+                                "name": "get_document",
+                                "arguments": json.dumps(
+                                    {
+                                        "document_key": chunk["document_key"],
+                                        "version": chunk["version"],
+                                        "start": 999,
+                                    }
+                                ),
+                            },
+                        }
+                    ],
+                }
+            return {"role": "assistant", "content": "draft"}
+
+    async with Client(create_server(kb)) as client:
+        result = await run_agent("refund?", Model(), client, max_steps=2)
+    assert result["status"] == "budget_exhausted"
+    assert result["missing_required_tools"] == ["get_document"]

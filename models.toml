@@ -1,0 +1,25 @@
+# 모델 선택은 이 파일 한 곳에서 한다. 비밀값은 .env에 둔다.
+# Select inference models here; keep credentials in .env.
+
+[embedding]
+preset = "bge-m3"
+backend = "sentence-transformers"
+device = "cuda:0"
+precision = "float32"
+batch_size = 8
+# 생략하면 모델의 기본 길이·프롬프트를 사용한다. 빈 프롬프트는 명시적으로 비활성화한다.
+# Omit length/prompts to use model defaults; an empty prompt explicitly disables it.
+# max_length = 512
+# query_prompt = "query: "
+# document_prompt = "passage: "
+
+[reranker]
+preset = "bge-reranker-v2-m3"
+backend = "cross-encoder"
+device = "cuda:0"
+precision = "float32"
+batch_size = 8
+max_length = 512
+# 생략하면 고정 리비전의 기본 프롬프트를 사용한다.
+# Omit to use the pinned model's default prompt.
+# prompt = "Find passages relevant to the query."

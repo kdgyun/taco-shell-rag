@@ -1,0 +1,8 @@
+# taco.toml에서도 rerank=false로 설정해야 한다.
+# Also set rerank=false in taco.toml.
+[embedding]
+preset = "bge-m3"
+backend = "sentence-transformers"
+device = "cuda:0"
+precision = "float32"
+batch_size = 8

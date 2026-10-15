@@ -14,18 +14,24 @@ services:
       dockerfile: Dockerfile.gpu
     restart: unless-stopped
     environment:
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
-      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-5617a9f61b028005a4858fdac845db406aefb181}
-      RERANKER_MODEL: ${RERANKER_MODEL:-BAAI/bge-reranker-v2-m3}
-      RERANKER_MODEL_REVISION: ${RERANKER_MODEL_REVISION:-953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e}
+      MODEL_CONFIG: /config/models.toml
+      INFERENCE_ROLE: ${INFERENCE_ROLE:-all}
+      HF_TOKEN: ${HF_TOKEN:-}
+      # 이전 환경변수를 조용히 무시하지 않고 런타임에서 이전 방법을 안내한다.
+      # Keep legacy keys visible so the runtime rejects them with migration guidance.
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_MODEL_REVISION: ${EMBEDDING_MODEL_REVISION:-}
+      RERANKER_MODEL: ${RERANKER_MODEL:-}
+      RERANKER_MODEL_REVISION: ${RERANKER_MODEL_REVISION:-}
     volumes:
       - models:/models
+      - ${MODEL_CONFIG_PATH:-./models.toml}:/config/models.toml:ro
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ["${INFERENCE_GPU_ID:-0}"]
+              device_ids: ["${EMBEDDING_GPU_ID:-${INFERENCE_GPU_ID:-0}}"]
               capabilities: [gpu]
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
@@ -43,7 +49,8 @@ services:
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?run scripts/bootstrap.py first}
     env_file: ["${RAG_ENV_FILE:-.env}"]
     volumes:
-      - ./taco.toml:/config/taco.toml:ro
+      - ${RAG_CONFIG_PATH:-./taco.toml}:/config/taco.toml:ro
+      - ${MODEL_CONFIG_PATH:-./models.toml}:/config/models.toml:ro
       - ./examples/knowledge:/config/examples/knowledge:ro
       - state:/config/data
     ports:
@@ -62,7 +69,7 @@ services:
     env_file: ["${RAG_ENV_FILE:-.env}"]
     command: [--config, /config/taco.toml, sync, --watch]
     volumes:
-      - ./taco.toml:/config/taco.toml:ro
+      - ${RAG_CONFIG_PATH:-./taco.toml}:/config/taco.toml:ro
       - ./examples/knowledge:/config/examples/knowledge:ro
       - state:/config/data
     depends_on:

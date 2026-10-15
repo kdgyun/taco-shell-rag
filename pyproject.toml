@@ -6,7 +6,12 @@ build-backend = "hatchling.build"
 name = "taco-shell-rag"
 version = "0.1.0"
 description = "GPU-only RAG with replaceable connectors and source-first MCP tools"
-requires-python = ">=3.11"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+# 고정한 Torch 2.8 CUDA 패키지는 CPython 3.11~3.13용으로 제공된다.
+# The pinned Torch 2.8 CUDA wheels support CPython 3.11 through 3.13.
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "httpx>=0.28,<0.29",
   "mcp>=2.3,<3",
@@ -27,6 +32,18 @@ taco = "taco_shell_rag.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/taco_shell_rag"]
 
+[tool.hatch.build.targets.sdist]
+only-include = [
+  "src", "tests", "examples", "scripts/bootstrap.py", "scripts/serve_generator.py",
+  "scripts/check_release.py",
+  "docs/install.md", "docs/models.md", "docs/connectors.md", "docs/architecture.md",
+  ".agents/skills/taco-install", ".claude/skills/taco-install",
+  "README.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md", "CLAUDE.md",
+  ".gitignore", ".dockerignore", ".env.example",
+  "Dockerfile", "Dockerfile.gpu", "compose.yaml", "compose.generator.yaml",
+  "compose.inference-split.yaml", "models.toml", "taco.toml", "pyproject.toml", "uv.lock",
+]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
@@ -37,6 +54,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["gpu: explicit real-model CUDA integration tests"]
 
 [[tool.uv.index]]
 name = "pytorch"

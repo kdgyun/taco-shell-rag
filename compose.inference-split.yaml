@@ -1,0 +1,36 @@
+services:
+  inference:
+    environment:
+      INFERENCE_ROLE: embedding
+
+  reranker:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    restart: unless-stopped
+    environment:
+      MODEL_CONFIG: /config/models.toml
+      INFERENCE_ROLE: reranker
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - models:/models
+      - ${MODEL_CONFIG_PATH:-./models.toml}:/config/models.toml:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${RERANKER_GPU_ID:-0}"]
+              capabilities: [gpu]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5)"]
+      interval: 15s
+      timeout: 10s
+      retries: 4
+      start_period: 15m
+    networks: [backend]
+
+  mcp:
+    depends_on:
+      reranker:
+        condition: service_healthy

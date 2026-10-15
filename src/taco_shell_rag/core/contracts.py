@@ -5,6 +5,10 @@ from hashlib import sha256
 from typing import Protocol
 
 
+class EmbeddingSpaceMismatch(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class Document:
     id: str
@@ -55,10 +59,14 @@ class EmbeddingSpace:
     revision: str
     dimension: int
     device: str
+    encoding: dict = field(default_factory=dict)
 
     @property
     def fingerprint(self) -> str:
-        raw = json.dumps([self.model, self.revision, self.dimension, "normalized-dense-v1"])
+        identity = [self.model, self.revision, self.dimension, "normalized-dense-v1"]
+        if self.encoding:
+            identity.append(self.encoding)
+        raw = json.dumps(identity, sort_keys=True)
         return sha256(raw.encode()).hexdigest()
 
 
@@ -68,12 +76,41 @@ class Source(Protocol):
     def scan(self, checkpoint: str | None) -> Snapshot: ...
 
 
-class Inference(Protocol):
+@dataclass(frozen=True)
+class EmbeddingResult:
+    vectors: list[list[float]]
+    space: EmbeddingSpace
+
+
+class Embedder(Protocol):
     def space(self) -> EmbeddingSpace: ...
 
-    def embed(self, texts: list[str], purpose: str) -> list[list[float]]: ...
+    def embed(self, texts: list[str], purpose: str) -> EmbeddingResult: ...
 
-    def rerank(self, query: str, texts: list[str]) -> list[float]: ...
+
+@dataclass(frozen=True)
+class RerankerInfo:
+    model: str
+    revision: str
+    device: str
+    backend: str
+    precision: str = "float32"
+    max_length: int = 512
+    batch_size: int = 8
+    prompt: str | None = None
+    score_kind: str = "reranker_raw_uncalibrated"
+
+
+@dataclass(frozen=True)
+class RerankResult:
+    scores: list[float]
+    info: RerankerInfo
+
+
+class Reranker(Protocol):
+    def describe(self) -> RerankerInfo: ...
+
+    def rerank(self, query: str, texts: list[str]) -> RerankResult: ...
 
 
 class VectorIndex(Protocol):

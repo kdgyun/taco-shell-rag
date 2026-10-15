@@ -42,7 +42,7 @@ def test_invalid_embedding_values_do_not_replace_published_document(kb, monkeypa
     kb.sync()
     old = kb.ledger.get(source.documents[0].key)
     source.documents = [replace(source.documents[0], text="different policy")]
-    monkeypatch.setattr(kb.inference, "embed", lambda *_: [[float("nan"), 0.0, 0.0]])
+    monkeypatch.setattr(kb.embedder, "embed", lambda *_: [[float("nan"), 0.0, 0.0]])
     assert kb.sync()[source.id]["status"] == "error"
     assert kb.ledger.get(source.documents[0].key) == old
 

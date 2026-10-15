@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
 
-from taco_shell_rag.core.contracts import Chunk, Document
+from taco_shell_rag.core.contracts import Chunk, Document, EmbeddingSpaceMismatch
 
 
 class Catalog:
@@ -61,7 +61,9 @@ class Catalog:
         with self.connect() as db:
             row = db.execute("SELECT value FROM settings WHERE key='embedding_space'").fetchone()
             if row and row[0] != fingerprint:
-                raise ValueError("embedding space changed; use a new collection and catalog")
+                raise EmbeddingSpaceMismatch(
+                    "embedding space changed; use a new collection and catalog"
+                )
             if not row and initialize:
                 db.execute("INSERT INTO settings VALUES ('embedding_space', ?)", (fingerprint,))
 

@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 
 from taco_shell_rag.core.chunking import split_document
-from taco_shell_rag.core.contracts import Document, Snapshot
+from taco_shell_rag.core.contracts import Document, EmbeddingSpaceMismatch, Snapshot
 
 
 class ChangingSource:
@@ -34,9 +34,9 @@ def test_unicode_chunks_reconstruct_and_namespace_identity():
 def test_sync_search_read_and_unchanged_skip(kb):
     source = attach(kb, ChangingSource())
     assert kb.sync()[source.id]["changed"] == 1
-    calls = kb.inference.embedded
+    calls = kb.embedder.embedded
     assert kb.sync()[source.id]["changed"] == 0
-    assert kb.inference.embedded == calls
+    assert kb.embedder.embedded == calls
     result = kb.search("refund")
     assert result["results"][0]["chunk"]["text"]
     assert result["score_kind"] == "reranker_raw_uncalibrated"
@@ -52,7 +52,7 @@ def test_failed_embedding_keeps_old_publication_and_checkpoint(kb):
     kb.sync()
     source.documents = [replace(source.documents[0], text="new text")]
     source.checkpoint = "second"
-    kb.inference.fail = True
+    kb.embedder.fail = True
     assert kb.sync()[source.id]["status"] == "error"
     assert kb.ledger.checkpoint(source.id) == "first"
     assert "refund" in kb.ledger.get(source.documents[0].key)[0].text
@@ -101,12 +101,12 @@ def test_failed_cleanup_stays_hidden_and_retries(kb, monkeypatch):
 
 def test_no_cpu_fallback_or_incompatible_model_reuse(kb):
     attach(kb, ChangingSource())
-    kb.inference.cpu()
+    kb.embedder.cpu()
     with pytest.raises(ValueError, match="CUDA"):
         kb.sync()
-    kb.inference.info = replace(kb.inference.info, device="cuda:0")
+    kb.embedder.info = replace(kb.embedder.info, device="cuda:0")
     kb.sync()
-    kb.inference.info = replace(kb.inference.info, revision="different")
+    kb.embedder.info = replace(kb.embedder.info, revision="different")
     with pytest.raises(ValueError, match="embedding space"):
         kb.search("refund")
 
@@ -118,3 +118,124 @@ def test_writer_lock_and_duplicate_inventory(kb):
     source.documents *= 2
     assert kb.sync()[source.id]["status"] == "error"
     assert kb.ledger.status()["documents"] == 0
+
+
+def test_reranker_choice_is_independent_of_indexing(kb):
+    attach(kb, ChangingSource())
+    kb.reranker.fail = True
+    assert kb.sync()["notes"]["status"] == "ok"
+    assert kb.reranker.calls == 0
+    with pytest.raises(ConnectionError):
+        kb.search("refund")
+    calls = kb.embedder.embedded
+    kb.reranker.fail = False
+    kb.reranker.info = replace(
+        kb.reranker.info, model="another-series", revision="another-revision"
+    )
+    assert kb.sync()["notes"]["changed"] == 0
+    assert kb.embedder.embedded == calls
+    assert kb.search("refund")["reranker"]["model"] == "another-series"
+
+
+@pytest.mark.parametrize(
+    "encoding",
+    [
+        {"query_prompt": "query: "},
+        {"document_prompt": "passage: "},
+        {"max_length": 256},
+        {"precision": "float16"},
+    ],
+)
+def test_changed_embedding_options_cannot_reuse_old_vectors(kb, encoding):
+    attach(kb, ChangingSource())
+    kb.sync()
+    kb.embedder.info = replace(kb.embedder.info, encoding=encoding)
+    with pytest.raises(ValueError, match="embedding space"):
+        kb.search("refund")
+    with pytest.raises(ValueError, match="embedding space"):
+        kb.sync()
+
+
+def test_disabled_reranker_does_not_call_it_or_claim_rerank_scores(kb):
+    attach(kb, ChangingSource())
+    kb.rerank_enabled = False
+    kb.reranker.fail = True
+    kb.sync()
+    result = kb.search("refund")
+    assert result["score_kind"] == "cosine"
+    assert result["reranker"] is None
+    assert kb.reranker.calls == 0
+
+
+def test_reranker_cpu_response_is_not_accepted(kb):
+    attach(kb, ChangingSource())
+    kb.sync()
+    kb.reranker.info = replace(kb.reranker.info, device="cpu")
+    with pytest.raises(ValueError, match="CUDA"):
+        kb.search("refund")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"revision": "another-revision"}, {"encoding": {"precision": "float16"}}, {"device": "cpu"}],
+)
+def test_execution_space_mismatch_never_reaches_vector_search(kb, monkeypatch, changes):
+    attach(kb, ChangingSource())
+    kb.sync()
+    original = kb.embedder.embed
+
+    def switched(texts, purpose):
+        result = original(texts, purpose)
+        return replace(result, space=replace(result.space, **changes))
+
+    def unexpected(*_):
+        raise AssertionError("incompatible vectors must not reach the index")
+
+    monkeypatch.setattr(kb.embedder, "embed", switched)
+    monkeypatch.setattr(kb.index, "search", unexpected)
+    with pytest.raises(ValueError):
+        kb.search("refund")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"revision": "another-revision"}, {"encoding": {"max_length": 256}}, {"device": "cpu"}],
+)
+def test_model_change_between_batches_preserves_publication_and_checkpoint(
+    kb, monkeypatch, changes
+):
+    source = attach(kb, ChangingSource())
+    kb.sync()
+    published = kb.ledger.get(source.documents[0].key)
+    points = kb.index.client.count("test").count
+    source.documents = [replace(source.documents[0], text="updated refund policy " * 100)]
+    source.checkpoint = "second"
+    original = kb.embedder.embed
+    calls = 0
+
+    def switched(texts, purpose):
+        nonlocal calls
+        calls += 1
+        result = original(texts, purpose)
+        return replace(result, space=replace(result.space, **changes)) if calls == 2 else result
+
+    monkeypatch.setattr(kb.embedder, "embed", switched)
+    assert kb.sync()[source.id]["status"] == "error"
+    assert calls == 2
+    assert kb.ledger.checkpoint(source.id) == "first"
+    assert kb.ledger.get(source.documents[0].key) == published
+    assert kb.index.client.count("test").count == points
+
+
+def test_same_dimension_does_not_make_execution_spaces_compatible(kb, monkeypatch):
+    attach(kb, ChangingSource())
+    kb.sync()
+    original = kb.embedder.embed
+
+    def switched(texts, purpose):
+        result = original(texts, purpose)
+        return replace(result, space=replace(result.space, model="another-model"))
+
+    monkeypatch.setattr(kb.embedder, "embed", switched)
+    with pytest.raises(EmbeddingSpaceMismatch, match="execution space changed"):
+        kb.search("refund")

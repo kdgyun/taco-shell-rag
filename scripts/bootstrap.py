@@ -28,10 +28,17 @@ def create_env(root: Path) -> bool:
 
 
 def check_host() -> dict:
-    checks = {"linux": sys.platform == "linux", "docker": False, "compose": False, "gpu": False}
+    checks = {
+        "linux": sys.platform == "linux",
+        "docker": False,
+        "compose": False,
+        "buildx": False,
+        "gpu": False,
+    }
     commands = {
         "docker": ["docker", "info"],
         "compose": ["docker", "compose", "version"],
+        "buildx": ["docker", "buildx", "version"],
         "gpu": ["nvidia-smi", "--query-gpu=name,driver_version", "--format=csv,noheader"],
     }
     for name, command in commands.items():
