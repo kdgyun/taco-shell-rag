@@ -1,9 +1,11 @@
 import importlib.util
 import stat
+import tomllib
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from packaging.specifiers import SpecifierSet
 
 from taco_shell_rag.config import load_settings
 
@@ -63,3 +65,11 @@ def test_docker_dependencies_are_cached_separately_from_source(filename):
 def test_docker_project_build_copies_readme_and_license_metadata(filename):
     dockerfile = Path(filename).read_text()
     assert dockerfile.index("COPY README.md LICENSE ./") < dockerfile.index("--no-editable")
+
+
+def test_python_support_matches_the_pinned_cuda_wheel_versions():
+    with Path("pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)
+    supported = SpecifierSet(project["project"]["requires-python"])
+    assert all(version in supported for version in ["3.11", "3.12", "3.13"])
+    assert all(version not in supported for version in ["3.10", "3.14"])

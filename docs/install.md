@@ -6,6 +6,10 @@
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)이 필요하다.
 GPU가 없는 호스트에서 CPU로 대체 실행하지 않는다. GPU 메모리 요구량은 선택한 모델과 입력 길이에 따라 달라진다.
 
+패키지의 Python 지원 범위는 3.11~3.13이며 기본 Docker 이미지는 3.12를 사용한다.
+소스에서 직접 설치할 때도 `uv sync --python 3.12`처럼 버전을 지정한다.
+Python 3.14에는 현재 고정한 Torch 2.8 CUDA 패키지가 없어 설치할 수 없다.
+
 Mac은 MCP 클라이언트나 계약 테스트용 개발 환경으로 사용한다. CUDA 실행 호스트는 아니다.
 이미 다른 서비스가 사용하는 GPU라면 메모리와 GPU 번호를 확인한 뒤 실행한다.
 이 가이드의 명령은 현재 저장소에만 적용한다. 시스템 패키지 설치나 Docker 재시작은 별도 승인 대상이다.
@@ -159,7 +163,7 @@ docker compose exec mcp taco --config /config/taco.toml status
 ## 개발 환경
 
 ```sh
-uv sync --group dev
+uv sync --group dev --python 3.12
 uv run pytest
 uv run ruff check src tests scripts
 ```

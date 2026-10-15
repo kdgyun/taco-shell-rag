@@ -1,10 +1,10 @@
 # 개발 가이드
 
-Python 3.11 이상과 `uv`를 사용한다. 실제 추론 호스트는 Linux NVIDIA GPU가 필요하지만
+Python 3.11~3.13과 `uv`를 사용한다. 실제 추론 호스트는 Linux NVIDIA GPU가 필요하지만
 계약 테스트와 정적 검사는 모델 가중치를 받지 않고 로컬에서 실행한다.
 
 ```sh
-uv sync --frozen --group dev
+uv sync --frozen --group dev --python 3.12
 uv run --frozen pytest -q
 uv run --frozen ruff check src tests scripts
 ```

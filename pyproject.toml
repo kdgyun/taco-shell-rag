@@ -9,7 +9,9 @@ description = "GPU-only RAG with replaceable connectors and source-first MCP too
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
-requires-python = ">=3.11"
+# 고정한 Torch 2.8 CUDA 패키지는 CPython 3.11~3.13용으로 제공된다.
+# The pinned Torch 2.8 CUDA wheels support CPython 3.11 through 3.13.
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "httpx>=0.28,<0.29",
   "mcp>=2.3,<3",

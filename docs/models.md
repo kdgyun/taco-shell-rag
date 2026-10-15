@@ -150,10 +150,11 @@ MCP의 `doctor`와 `search`는 실행 모델을 확인한다. `taco models --mod
 
 CUDA가 준비된 Linux 호스트에서 선택한 설정으로 통합 테스트를 실행할 수 있다.
 이 명령은 GPU를 사용하며 캐시에 없는 모델 가중치를 다운로드한다.
+기본 Docker 이미지와 같은 Python 3.12를 지정한다. 프로젝트가 고정한 Torch 2.8은 Python 3.14용 CUDA 패키지를 제공하지 않는다.
 
 ```sh
 RUN_GPU_TESTS=1 MODEL_CONFIG=models.toml \
-  uv run --frozen --extra gpu --group dev pytest -m gpu -q
+  uv run --frozen --python 3.12 --extra gpu --group dev pytest -m gpu -q
 ```
 
 `MODEL_CONFIG`를 다른 프로필 경로로 바꾸면 같은 검사로 모델 조합을 확인한다.

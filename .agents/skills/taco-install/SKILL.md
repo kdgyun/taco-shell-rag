@@ -15,6 +15,9 @@ run contract tests or act as an MCP client, but is not a supported inference hos
 Run `python3 scripts/bootstrap.py --check`; distinguish host checks from actual
 container CUDA access and successful model inference. Never substitute CPU inference.
 Reuse working image-provided drivers/toolkit packages; do not force past package holds.
+For native package installation, select Python 3.12 explicitly with uv. The project
+supports Python 3.11 through 3.13; its pinned Torch 2.8 CUDA wheels do not support
+Python 3.14. The base Docker images already select Python 3.12.
 
 Keep existing settings and data. Ask for the source directories or API contract,
 the intended GPU and deployment ports when unknown. Use `.env.example` for names
