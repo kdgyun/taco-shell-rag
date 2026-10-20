@@ -8,7 +8,7 @@ from pathlib import Path
 from time import monotonic
 
 from .models import GenerationConfig
-from .runner import SYSTEM
+from .runner import READ_TOOLS, SYSTEM
 
 
 def run_claude(question: str, config: GenerationConfig):
@@ -53,7 +53,7 @@ def run_claude(question: str, config: GenerationConfig):
             "--tools",
             "",
             "--allowedTools",
-            "mcp__taco__search mcp__taco__get_document mcp__taco__status",
+            " ".join(f"mcp__taco__{name}" for name in sorted(READ_TOOLS)),
             "--permission-mode",
             "dontAsk",
             "--no-session-persistence",
@@ -87,11 +87,7 @@ def run_claude(question: str, config: GenerationConfig):
             for content in event.get("message", {}).get("content", []):
                 if content.get("type") == "tool_use":
                     name = content.get("name", "")
-                    if name not in {
-                        "mcp__taco__search",
-                        "mcp__taco__get_document",
-                        "mcp__taco__status",
-                    }:
+                    if name not in {f"mcp__taco__{tool}" for tool in READ_TOOLS}:
                         raise ValueError("Claude attempted an unexpected tool")
                     trace.append({"tool": name, "id": content.get("id")})
 

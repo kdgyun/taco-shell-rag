@@ -7,7 +7,7 @@ from mcp import Client
 from taco_shell_rag.agent.models import GenerationConfig, HttpModel
 from taco_shell_rag.agent.runner import run_agent, run_rag
 from taco_shell_rag.core.contracts import Document, Snapshot
-from taco_shell_rag.mcp_server import create_server
+from tests.mcp_fixture import create_server
 
 
 def populate(kb):

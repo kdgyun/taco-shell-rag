@@ -3,15 +3,15 @@ from dataclasses import replace
 import pytest
 from qdrant_client import QdrantClient
 
-from taco_shell_rag.adapters.catalog import Catalog
-from taco_shell_rag.adapters.qdrant import QdrantIndex
 from taco_shell_rag.core.contracts import (
     EmbeddingResult,
     EmbeddingSpace,
     RerankerInfo,
     RerankResult,
 )
-from taco_shell_rag.core.service import KnowledgeBase
+from taco_shell_rag.indexer.catalog import Catalog
+from taco_shell_rag.indexer.pipeline import KnowledgeBase
+from taco_shell_rag.indexer.vectorstore import QdrantIndex
 
 
 class FakeEmbedder:

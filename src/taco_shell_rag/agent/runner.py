@@ -2,7 +2,7 @@ import json
 from time import perf_counter
 from uuid import uuid4
 
-READ_TOOLS = {"search", "get_document", "status"}
+READ_TOOLS = {"search", "keyword_search", "deep_search", "get_document", "status"}
 # 모델이 다른 도구 이름을 만들어도 실행하지 않는다. MCP에 새 도구가 생겨도 자동 허용하지 않는다.
 # Model output and newly registered MCP tools cannot expand this explicit allowlist.
 SYSTEM = (
@@ -103,7 +103,12 @@ async def run_agent(question, model, client, max_steps=8, max_tool_calls=16):
                     raise ValueError("tool evidence budget exceeded; request a smaller window")
                 evidence_chars += len(content)
                 failed = bool(result.is_error)
-                if not failed and name in {"search", "get_document"}:
+                if not failed and name in {
+                    "search",
+                    "keyword_search",
+                    "deep_search",
+                    "get_document",
+                }:
                     evidence_reads += 1
                 if not failed:
                     chunks = data.get("chunks") if isinstance(data, dict) else None

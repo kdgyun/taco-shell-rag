@@ -7,12 +7,12 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from qdrant_client import QdrantClient
 
-from .adapters.catalog import Catalog
 from .adapters.inference import HttpEmbedder, HttpReranker
-from .adapters.qdrant import QdrantIndex
-from .adapters.sources import FolderSource, RestSource
 from .agent.models import GenerationConfig
-from .core.service import KnowledgeBase
+from .indexer.catalog import Catalog
+from .indexer.pipeline import KnowledgeBase
+from .indexer.sources import FolderSource, RestSource
+from .indexer.vectorstore import QdrantIndex
 
 
 class SourceConfig(BaseModel):
@@ -34,6 +34,18 @@ class SourceConfig(BaseModel):
         if self.token_env and not re.fullmatch(r"[A-Z][A-Z0-9_]*", self.token_env):
             raise ValueError("token_env must name an environment variable")
         return self
+
+
+class RetrievalSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["hybrid", "dense"] = "hybrid"
+    candidate_limit: int = Field(default=160, ge=20, le=160)
+    rrf_k: int = Field(default=60, ge=1, le=1000)
+    dense_weight: float = Field(default=1, gt=0, allow_inf_nan=False)
+    keyword_weight: float = Field(default=1, gt=0, allow_inf_nan=False)
+    max_plan_terms: int = Field(default=6, ge=1, le=10)
+    max_plan_sources: int = Field(default=4, ge=1, le=8)
+    max_evidence_chars: int = Field(default=16000, ge=4000, le=80000)
 
 
 class Settings(BaseModel):
@@ -59,6 +71,7 @@ class Settings(BaseModel):
     allowed_origins: list[str] | None = None
     sources: list[SourceConfig] = Field(min_length=1)
     generation: GenerationConfig | None = None
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
 
     @model_validator(mode="after")
     def validate_overlap_and_identity(self):

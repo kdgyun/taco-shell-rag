@@ -2,8 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from taco_shell_rag.core.chunking import split_document
 from taco_shell_rag.core.contracts import Document, EmbeddingSpaceMismatch, Snapshot
+from taco_shell_rag.indexer.chunking import split_document
 
 
 class ChangingSource:

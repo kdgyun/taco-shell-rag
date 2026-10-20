@@ -140,3 +140,12 @@ def test_cli_shows_resolved_model_options_without_loading_gpu(monkeypatch, capsy
     data = json.loads(capsys.readouterr().out)
     assert data["embedding"]["model"] == "BAAI/bge-m3"
     assert len(data["reranker"]["revision"]) == 40
+
+
+def test_missing_go_binary_has_an_actionable_hint_without_its_private_path(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["taco", "search", "refund", "--mode", "keyword"])
+    monkeypatch.setenv("MCP_STDIO_BIN", "/nonexistent/private-binary-location")
+    assert cli.main() == 1
+    error = capsys.readouterr().err
+    assert "make build" in error and "MCP_STDIO_BIN" in error
+    assert "private-binary-location" not in error

@@ -204,7 +204,9 @@ def test_inference_api_contract_and_bounds_without_loading_gpu_models():
         assert embedded.json() == {
             "vectors": [[1.0, 0.5]],
             "embedding_space": asdict(Engine.info),
+            "embedding_fingerprint": Engine.info.fingerprint,
         }
+        assert health["embedding_fingerprint"] == embedded.json()["embedding_fingerprint"]
         assert client.post("/embed", json={"texts": [], "purpose": "query"}).status_code == 422
         assert (
             client.post("/embed", json={"texts": ["a" * 4001], "purpose": "query"}).status_code

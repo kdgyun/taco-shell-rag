@@ -19,7 +19,9 @@ class GenerationConfig(BaseModel):
     mode: Literal["agent", "rag"] = "agent"
     mcp_url: str = "http://127.0.0.1:8080/mcp"
     mcp_token_env: str = "MCP_AUTH_TOKEN"
-    required_tools: list[Literal["search", "get_document", "status"]] = Field(default_factory=list)
+    required_tools: list[
+        Literal["search", "keyword_search", "deep_search", "get_document", "status"]
+    ] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_required_tools(self):

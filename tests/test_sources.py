@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from taco_shell_rag.adapters.sources import FolderSource, RestSource
+from taco_shell_rag.indexer.sources import FolderSource, RestSource
 
 
 def test_folder_ignores_hidden_secret_files_and_symlinks(tmp_path):
