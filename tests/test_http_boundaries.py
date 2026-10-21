@@ -2,8 +2,8 @@ import httpx
 import pytest
 
 from taco_shell_rag.adapters.inference import HttpEmbedder, HttpReranker
-from taco_shell_rag.adapters.sources import RestSource
 from taco_shell_rag.agent.models import GenerationConfig, HttpModel
+from taco_shell_rag.indexer.sources import RestSource
 
 
 @pytest.mark.parametrize("status", [302, 307])

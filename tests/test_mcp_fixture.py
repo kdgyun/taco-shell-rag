@@ -5,7 +5,7 @@ from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
 from taco_shell_rag.core.contracts import Document, Snapshot
-from taco_shell_rag.mcp_server import BearerAuth, create_http_app, create_server
+from tests.mcp_fixture import BearerAuth, create_http_app, create_server
 
 
 async def test_actual_mcp_session_search_and_document(kb):

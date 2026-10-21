@@ -1,0 +1,1 @@
+"""GPU reranking model adapters."""

@@ -10,7 +10,8 @@ from pathlib import Path
 
 from .config import build_knowledge_base, load_settings
 from .core.contracts import EmbeddingSpaceMismatch
-from .core.service import require_gpu, require_reranker
+from .indexer.pipeline import require_gpu, require_reranker
+from .mcp_client import MCPBinaryUnavailable
 from .model_config import ModelConfigurationError, load_model_settings, model_catalog
 
 
@@ -27,6 +28,7 @@ def main():
     model_options.add_argument("--model-config", type=Path)
     search = sub.add_parser("search")
     search.add_argument("query")
+    search.add_argument("--mode", choices=["hybrid", "dense", "keyword", "planned"])
     ask = sub.add_parser("ask")
     ask.add_argument("question")
     ask.add_argument("--model-config", type=Path)
@@ -43,6 +45,32 @@ def main():
             print(json.dumps(result, ensure_ascii=False, indent=2))
             return 0
         settings = load_settings(args.config)
+        if args.command == "serve":
+            from .mcp_client import server_binary
+
+            binary = server_binary(args.transport)
+            os.execv(binary, [binary, "--config", str(args.config.resolve())])
+        if args.command == "search":
+            from mcp import Client
+
+            from .mcp_client import stdio_parameters
+
+            async def search_evidence():
+                async with Client(stdio_parameters(args.config, settings)) as client:
+                    mode = args.mode or settings.retrieval.mode
+                    tool = {"keyword": "keyword_search", "planned": "deep_search"}.get(
+                        mode, "search"
+                    )
+                    arguments = {"query": args.query}
+                    if tool == "search":
+                        arguments["mode"] = mode
+                    result = await client.call_tool(tool, arguments)
+                    if result.is_error:
+                        raise RuntimeError("Go MCP retrieval failed; check service diagnostics")
+                    return result.structured_content
+
+            print(json.dumps(asyncio.run(search_evidence()), ensure_ascii=False, indent=2))
+            return 0
         if args.command == "ask":
             if args.model_config:
                 from .agent.models import GenerationConfig
@@ -59,6 +87,27 @@ def main():
                 answer = run_claude(args.question, settings.generation)
                 print(json.dumps(answer, ensure_ascii=False, indent=2))
                 return int(answer["status"] != "completed")
+            from mcp import Client
+
+            from .agent.models import HttpModel
+            from .agent.runner import run_agent, run_rag
+            from .mcp_client import stdio_parameters
+
+            async def answer_question():
+                model = HttpModel(settings.generation)
+                try:
+                    async with Client(stdio_parameters(args.config, settings)) as client:
+                        if settings.generation.mode == "rag":
+                            return await run_rag(args.question, model, client)
+                        return await run_agent(
+                            args.question, model, client, settings.generation.max_steps
+                        )
+                finally:
+                    await model.client.aclose()
+
+            answer = asyncio.run(answer_question())
+            print(json.dumps(answer, ensure_ascii=False, indent=2))
+            return int(answer["status"] != "completed")
         kb = build_knowledge_base(settings, args.config.resolve().parent)
         if args.command == "status":
             print(json.dumps(kb.ledger.status(), indent=2))
@@ -82,8 +131,6 @@ def main():
                     }
                 )
             )
-        elif args.command == "search":
-            print(json.dumps(kb.search(args.query), ensure_ascii=False, indent=2))
         elif args.command == "sync":
             if args.interval < 10:
                 raise ValueError("watch interval must be at least 10 seconds")
@@ -100,49 +147,14 @@ def main():
                 if not args.watch:
                     return int(any(result["status"] != "ok" for result in results.values()))
                 time.sleep(args.interval)
-        elif args.command == "ask":
-            from mcp import Client
-
-            from .agent.models import HttpModel
-            from .agent.runner import run_agent, run_rag
-            from .mcp_server import create_server
-
-            async def answer_question():
-                model = HttpModel(settings.generation)
-                try:
-                    async with Client(create_server(kb)) as client:
-                        if settings.generation.mode == "rag":
-                            return await run_rag(args.question, model, client)
-                        return await run_agent(
-                            args.question, model, client, settings.generation.max_steps
-                        )
-                finally:
-                    await model.client.aclose()
-
-            answer = asyncio.run(answer_question())
-            print(json.dumps(answer, ensure_ascii=False, indent=2))
-            return int(answer["status"] != "completed")
-        else:
-            from .mcp_server import create_http_app, create_server
-
-            if args.transport == "stdio":
-                create_server(kb).run(transport="stdio")
-            else:
-                import uvicorn
-
-                app = create_http_app(
-                    kb,
-                    os.environ.get(settings.token_env, ""),
-                    settings.allowed_hosts,
-                    settings.allowed_origins,
-                )
-                uvicorn.run(app, host=settings.host, port=settings.port)
         return 0
     except Exception as error:
         # 사용자에게 보여 주는 오류에 토큰이나 외부 응답 본문이 섞이지 않게 한다.
         # Keep tokens and external response bodies out of public diagnostics.
         hint = "check configuration and service health"
         if isinstance(error, ModelConfigurationError):
+            hint = str(error)
+        elif isinstance(error, MCPBinaryUnavailable):
             hint = str(error)
         elif isinstance(error, EmbeddingSpaceMismatch):
             hint = (

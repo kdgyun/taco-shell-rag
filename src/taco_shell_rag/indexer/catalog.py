@@ -34,6 +34,39 @@ class Catalog:
                     error TEXT
                 );
             """)
+            db.execute("""CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
+                document_key UNINDEXED, version UNINDEXED, chunk_index UNINDEXED,
+                source_id UNINDEXED, text, title, path,
+                tokenize='unicode61 remove_diacritics 2'
+            )""")
+            schema = db.execute(
+                "SELECT value FROM settings WHERE key='lexical_schema'"
+            ).fetchone()
+            if schema is None:
+                # 기존 게시본만 역색인한다. 벡터를 다시 만들거나 문서 버전을 바꾸지 않는다.
+                # Backfill published text only; leave vectors and document versions unchanged.
+                db.execute("DELETE FROM chunk_fts")
+                for row in db.execute("SELECT key,document,chunks FROM documents").fetchall():
+                    self._index_text(
+                        db, row["key"], json.loads(row["document"]), json.loads(row["chunks"])
+                    )
+                db.execute("INSERT INTO settings VALUES ('lexical_schema','fts5-v1')")
+            elif schema[0] != "fts5-v1":
+                raise ValueError("unsupported keyword index schema")
+
+    @staticmethod
+    def _index_text(db, key: str, document: dict, chunks: list[dict]):
+        db.execute("DELETE FROM chunk_fts WHERE document_key=?", (key,))
+        db.executemany(
+            "INSERT INTO chunk_fts VALUES (?,?,?,?,?,?,?)",
+            [
+                (
+                    key, chunk["version"], chunk["index"], chunk["source_id"],
+                    chunk["text"], document.get("title", ""), document.get("path", ""),
+                )
+                for chunk in chunks
+            ],
+        )
 
     @contextmanager
     def connect(self):
@@ -57,7 +90,9 @@ class Catalog:
             finally:
                 fcntl.flock(lock, fcntl.LOCK_UN)
 
-    def check_space(self, fingerprint: str, *, initialize: bool = False):
+    def check_space(
+        self, fingerprint: str, *, initialize: bool = False, identity: dict | None = None
+    ):
         with self.connect() as db:
             row = db.execute("SELECT value FROM settings WHERE key='embedding_space'").fetchone()
             if row and row[0] != fingerprint:
@@ -66,6 +101,18 @@ class Catalog:
                 )
             if not row and initialize:
                 db.execute("INSERT INTO settings VALUES ('embedding_space', ?)", (fingerprint,))
+            if identity is not None:
+                descriptor = {key: value for key, value in identity.items() if key != "device"}
+                stored = db.execute(
+                    "SELECT value FROM settings WHERE key='embedding_descriptor'"
+                ).fetchone()
+                if stored and json.loads(stored[0]) != descriptor:
+                    raise EmbeddingSpaceMismatch("embedding identity differs from the catalog")
+                if stored is None and initialize:
+                    db.execute(
+                        "INSERT INTO settings VALUES ('embedding_descriptor', ?)",
+                        (json.dumps(descriptor, sort_keys=True),),
+                    )
 
     def get(self, key: str):
         with self.connect() as db:
@@ -96,6 +143,9 @@ class Catalog:
             db.execute(
                 "DELETE FROM retired WHERE key=? AND version=?", (document.key, chunks[0].version)
             )
+            # 본문·버전·키워드 색인은 함께 커밋한다. 검색은 게시 장부에 없는 벡터를 숨긴다.
+            # Commit text, version and lexical index together; unpublished vectors stay hidden.
+            self._index_text(db, document.key, asdict(document), [asdict(c) for c in chunks])
 
     def prepare_version(self, key: str, version: str):
         with self.connect() as db:
@@ -107,6 +157,7 @@ class Catalog:
                 if row["key"] not in keep:
                     db.execute("INSERT OR IGNORE INTO retired VALUES (?,?)", tuple(row))
                     db.execute("DELETE FROM documents WHERE key=?", (row["key"],))
+                    db.execute("DELETE FROM chunk_fts WHERE document_key=?", (row["key"],))
 
     def retired(self):
         with self.connect() as db:

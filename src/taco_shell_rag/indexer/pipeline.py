@@ -4,8 +4,7 @@ from math import isfinite
 from time import perf_counter
 from uuid import uuid4
 
-from .chunking import split_document
-from .contracts import (
+from taco_shell_rag.core.contracts import (
     Embedder,
     EmbeddingResult,
     EmbeddingSpace,
@@ -16,6 +15,8 @@ from .contracts import (
     Source,
     VectorIndex,
 )
+
+from .chunking import split_document
 
 
 def now() -> str:
@@ -86,7 +87,7 @@ class KnowledgeBase:
         with self.ledger.writer():
             space = self.embedder.space()
             require_gpu(space)
-            self.ledger.check_space(space.fingerprint, initialize=True)
+            self.ledger.check_space(space.fingerprint, initialize=True, identity=asdict(space))
             self.index.setup(space.dimension)
             for source in self.sources.values():
                 self.ledger.started(source.id, now())

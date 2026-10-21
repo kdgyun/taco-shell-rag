@@ -116,7 +116,7 @@ RERANKER_GPU_ID=1
 docker compose -f compose.yaml -f compose.inference-split.yaml config --quiet
 docker compose -f compose.yaml -f compose.inference-split.yaml up -d --build qdrant inference reranker mcp
 docker compose -f compose.yaml -f compose.inference-split.yaml run --rm indexer --config /config/taco.toml sync
-docker compose -f compose.yaml -f compose.inference-split.yaml exec mcp taco --config /config/taco.toml doctor
+docker compose -f compose.yaml -f compose.inference-split.yaml run --rm --no-deps indexer --config /config/taco.toml doctor
 ```
 
 이 구성에서 `embedding_url`은 `http://inference:8000`, `reranker_url`은 `http://reranker:8000`이다.
@@ -135,15 +135,17 @@ docker compose -f compose.yaml -f compose.inference-split.yaml exec mcp taco --c
 `reranker_token_env = "RERANKER_API_TOKEN"`을 설정하고 실제 값은 `.env`에 넣는다.
 토큰은 각 엔드포인트에 Bearer 헤더로 전달되며 리다이렉트는 따라가지 않는다.
 
-- 임베딩: `GET /healthz`의 `embedding_space`, `POST /embed`의 `vectors`와 실행한 `embedding_space`.
+- 임베딩: `GET /healthz`의 `embedding_space`, `POST /embed`의 `vectors`와 실행한 `embedding_space`. 두 응답 모두 `embedding_fingerprint`를 포함한다.
 - 리랭커: `GET /healthz`의 `reranker`, `POST /rerank`의 `scores`와 실제 실행한 `reranker` 정보.
 - CUDA 장치와 모델·고정 리비전을 보고해야 한다. 다른 응답 규격은 어댑터가 필요하며 일반 `/v1/embeddings` 주소를 그대로 넣는다고 호환되지 않는다.
 
 실제 응답 필드는 `core/contracts.py`, `adapters/inference.py`, `tests/test_inference.py`를 참고한다.
+지문은 `EmbeddingSpace.fingerprint`로 계산한다. 모델·리비전·차원과 인코딩 설정을 식별하며
+CUDA 장치 번호는 벡터 공간을 바꾸지 않는다. Go는 지문과 색인 당시 모델 정보를 함께 검증한다.
 임베딩 실행 응답의 공간이 사전 확인한 공간과 다르면 해당 요청을 실패 처리한다.
 상태 조회 직후 모델이 교체돼도 다른 공간의 벡터를 기존 색인에 섞지 않는다.
 실행 모델 정보가 없는 임베딩 서버도 허용하지 않는다.
-MCP의 `doctor`와 `search`는 실행 모델을 확인한다. `taco models --model-config`는 설정만 해석하며
+CLI의 `doctor`와 Go MCP의 `search`는 실행 모델을 확인한다. `taco models --model-config`는 설정만 해석하며
 실제 가중치 로딩이나 GPU 실행을 증명하지 않는다.
 
 ### 실제 GPU 추론 확인
@@ -161,7 +163,8 @@ RUN_GPU_TESTS=1 MODEL_CONFIG=models.toml \
 `INFERENCE_ROLE=embedding` 또는 `reranker`로 역할 하나만 검사할 수도 있다.
 기본 `pytest`에서는 이 검사를 건너뛴다. 명시적으로 실행했는데 CUDA가 없으면 실패하며 CPU로 바꾸지 않는다.
 
-검사 범위는 벡터 차원·정규화, 리랭커 점수, 추론 HTTP 응답과 데모 문서의 MCP 검색·원문 조회다.
+검사 범위는 벡터 차원·정규화, 리랭커 점수, 추론 HTTP 응답과 데모 문서의 Python 게시·읽기 계약이다.
+실제 Go HTTP·stdio 연결은 기본 `tests/test_go_mcp.py`에서 테스트 대역 모델로 별도 검사한다.
 검사용 Qdrant는 메모리 모드다. 실제 Qdrant 서버·Docker 연결과 업무별 검색 품질은 별도로 확인한다.
 사용하지 않는 역할의 검사는 건너뛰며 생성 모델은 호출하지 않는다.
 

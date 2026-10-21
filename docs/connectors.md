@@ -6,11 +6,15 @@
 | 위치 | 책임 |
 |---|---|
 | `core/contracts.py` | 문서·스냅샷·청크와 소스·추론·저장소의 공통 규격 |
-| `core/service.py` | 게시 순서, 체크포인트, 검색 결과 검증 |
-| `adapters/sources.py` | 폴더·REST 수집과 입력 제한 |
-| `adapters/inference.py`, `adapters/qdrant.py` | 추론 HTTP와 벡터 저장소 연결 |
+| `indexer/pipeline.py` | 게시 순서와 체크포인트 |
+| `indexer/sources.py` | 폴더·REST 수집과 입력 제한 |
+| `indexer/catalog.py`, `indexer/vectorstore.py` | 게시 장부·BM25와 벡터 쓰기 |
+| `adapters/inference.py` | 역할별 추론 HTTP 연결 |
 | `config.py` | 설정 검증과 어댑터 조립 |
 | `agent/` | 검색과 분리된 선택형 답변 생성 |
+
+위 경로는 `src/taco_shell_rag/` 기준이다. 검색은 Go의 `internal/retriever/`에 있다.
+모델·벡터 API를 바꾸면 Python의 쓰기 계약과 Go의 읽기 계약을 함께 확인한다.
 
 ## 기본 연결
 
@@ -60,7 +64,9 @@ REST API가 이 응답 형식이나 Bearer 인증을 제공하지 않으면 별�
 실패한 벡터 쓰기는 게시하지 않으며 이전 버전 정리는 재시도할 수 있게 장부에 남긴다.
 
 새 어댑터를 만든 뒤 `config.py`의 `SourceConfig`와 조립 함수에 명시적으로 등록한다.
-코어의 게시·검색 로직을 수정할 필요는 없다. 설정 파일에는 비밀값 대신 환경변수 이름을 적는다.
+게시·검색 로직을 바꿀 필요는 없다. Go는 설정에서 소스 ID만 사용하므로 수집기별 옵션을 새로
+등록할 필요도 없다. 원본 수집 API와 그 자격 증명은 Python 수집기가 다룬다.
+설정 파일에는 비밀값 대신 환경변수 이름을 적는다.
 컨테이너의 데이터 마운트와 네트워크 권한도 함께 확인한다.
 
 다음은 전체 목록을 읽는 어댑터의 최소 형태다. `client`의 구현과 인증은 어댑터가 맡는다.

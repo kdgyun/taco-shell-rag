@@ -1,3 +1,5 @@
+"""In-process MCP test double for generator tests; deployed servers use Go."""
+
 import hmac
 from typing import Any
 
@@ -5,7 +7,7 @@ from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 
-from .core.service import KnowledgeBase
+from taco_shell_rag.indexer.pipeline import KnowledgeBase
 
 
 def create_server(kb: KnowledgeBase) -> MCPServer:

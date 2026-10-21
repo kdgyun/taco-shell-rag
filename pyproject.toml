@@ -37,6 +37,7 @@ only-include = [
   "src", "tests", "examples", "scripts/bootstrap.py", "scripts/serve_generator.py",
   "scripts/check_release.py",
   "docs/install.md", "docs/models.md", "docs/connectors.md", "docs/architecture.md",
+  "docs/retrieval.md", "cmd", "internal", "go.mod", "go.sum", "Makefile",
   ".agents/skills/taco-install", ".claude/skills/taco-install",
   "README.md", "CONTRIBUTING.md", "LICENSE", "AGENTS.md", "CLAUDE.md",
   ".gitignore", ".dockerignore", ".env.example",

@@ -1,6 +1,6 @@
 from hashlib import sha256
 
-from .contracts import Chunk, Document
+from taco_shell_rag.core.contracts import Chunk, Document
 
 
 def split_document(document: Document, size: int = 1000, overlap: int = 120) -> list[Chunk]:

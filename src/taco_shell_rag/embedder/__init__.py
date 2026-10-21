@@ -1,0 +1,1 @@
+"""GPU embedding model adapters."""

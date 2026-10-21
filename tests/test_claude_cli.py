@@ -26,7 +26,8 @@ assert args[args.index("--tools")+1] == ""
 assert "--strict-mcp-config" in args
 assert "--no-session-persistence" in args
 assert args[args.index("--allowedTools")+1].split() == [
-    "mcp__taco__search", "mcp__taco__get_document", "mcp__taco__status"
+    "mcp__taco__deep_search", "mcp__taco__get_document", "mcp__taco__keyword_search",
+    "mcp__taco__search", "mcp__taco__status"
 ]
 path=Path(args[args.index("--mcp-config")+1])
 assert path.stat().st_mode & 0o777 == 0o600

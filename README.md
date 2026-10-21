@@ -7,18 +7,21 @@
 ## 구성
 
 폴더와 REST API에서 읽은 문서를 공통 규격으로 색인한다.
-GPU 추론 서비스가 임베딩과 재순위화를 맡고 Qdrant가 벡터를 저장한다.
+Go 서버가 MCP와 검색을 맡고 Python 서비스가 수집·색인과 GPU 추론을 맡는다.
+Qdrant는 벡터, SQLite는 게시 문서와 BM25 키워드 색인을 저장한다.
 두 추론 역할은 모델·API 주소가 독립적이며 한 프로세스 또는 별도 GPU 프로세스로 실행한다.
-MCP의 `search`, `get_document`, `status`는 읽기 전용이다.
+MCP 도구는 `search`, `keyword_search`, `deep_search`, `get_document`, `status`이며 모두 읽기 전용이다.
 
 ```text
-폴더 / REST API → 색인 코어 → GPU 임베딩 → Qdrant
-                               검색·재순위화 ← MCP 클라이언트
-                                                  또는
-                                 선택적 agent → Claude / 자체 호스팅 LLM
+폴더 / REST API → Python indexer → GPU embedder → Qdrant
+                       └───────→ SQLite: 게시 장부·BM25
+
+MCP 클라이언트 → Go MCP → Qdrant + BM25 → GPU reranker → 근거 청크
+선택적 agent ──→ 같은 Go MCP + Claude / 자체 호스팅 LLM
 ```
 
-연결 구현은 `adapters/`, 공통 계약과 검색·색인은 `core/`, 답변 생성은 `agent/`에 둔다.
+Go의 `cmd/`는 서버 진입점, `internal/retriever/`는 하이브리드·키워드·계획형 검색이다.
+Python의 `src/taco_shell_rag/` 아래에 `indexer/`, `embedder/`, `reranker/`, `agent/`를 구분한다.
 검색 MCP는 생성 모델이나 Claude 계정 없이도 사용한다.
 회사별 용어, 업무 정책과 자동화는 기본 코어에 넣지 않는다.
 [커넥터 작성 가이드](docs/connectors.md)에 소스 규격과 확장 위치를 정리했다.
@@ -72,11 +75,13 @@ uv run taco models --model-config models.toml
 
 ```sh
 uv sync --group dev
-uv run pytest
-uv run ruff check src tests scripts
+make build
+make test
+make check
 ```
 
-계약 테스트에는 실제 GPU나 외부 모델을 사용하지 않는다.
+소스 개발에는 Go 1.25 이상이 필요하다. 기본 Docker 빌드는 Go 바이너리를 함께 준비한다.
+계약 테스트는 실제 Go HTTP·stdio 서버와 Python 색인기를 연결하며 GPU와 외부 모델은 대역을 사용한다.
 API 계약을 검증한 것과 모델 가중치·GPU 실행·검색 품질을 검증한 것은 별개다.
 
 ## 가이드
@@ -86,6 +91,7 @@ API 계약을 검증한 것과 모델 가중치·GPU 실행·검색 품질을 �
 | GPU 호스트 준비와 첫 검색 | [설치](docs/install.md) |
 | 임베딩·리랭커·생성 모델 선택 | [모델 연결](docs/models.md) |
 | 폴더·REST API 연결과 새 커넥터 작성 | [데이터 연결](docs/connectors.md) |
+| 하이브리드·키워드·계획형 검색과 한도 설정 | [검색](docs/retrieval.md) |
 | 구성 요소와 장애 시 게시 흐름 이해 | [구조와 동작](docs/architecture.md) |
 | 로컬 개발과 변경 검증 | [개발 가이드](CONTRIBUTING.md) |
 

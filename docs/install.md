@@ -6,7 +6,9 @@
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)이 필요하다.
 GPU가 없는 호스트에서 CPU로 대체 실행하지 않는다. GPU 메모리 요구량은 선택한 모델과 입력 길이에 따라 달라진다.
 
-패키지의 Python 지원 범위는 3.11~3.13이며 기본 Docker 이미지는 3.12를 사용한다.
+MCP·검색 서버는 Go, 색인·GPU 추론은 Python으로 실행한다.
+소스 개발에는 Go 1.25 이상과 Python 3.11~3.13이 필요하다. Docker 빌드가 Go 바이너리를 준비하며
+Python 기본 이미지는 3.12를 사용한다.
 소스에서 직접 설치할 때도 `uv sync --python 3.12`처럼 버전을 지정한다.
 Python 3.14에는 현재 고정한 Torch 2.8 CUDA 패키지가 없어 설치할 수 없다.
 
@@ -96,13 +98,14 @@ Docker 설치에 맞는 Buildx 플러그인을 준비한다. 다운로드 캐시
 
 ```sh
 docker compose config --quiet
-docker compose build
+docker compose build mcp indexer inference
 docker compose up -d qdrant inference mcp
-docker compose exec mcp taco models --model-config /config/models.toml
-docker compose exec mcp taco --config /config/taco.toml doctor
+docker compose run --rm --no-deps indexer models --model-config /config/models.toml
+docker compose run --rm --no-deps indexer --config /config/taco.toml doctor
 docker compose run --rm indexer --config /config/taco.toml sync
-docker compose exec mcp taco --config /config/taco.toml search 'refund'
-docker compose exec mcp taco --config /config/taco.toml status
+docker compose run --rm --no-deps indexer --config /config/taco.toml search 'refund'
+docker compose run --rm --no-deps indexer --config /config/taco.toml search 'refund' --mode keyword
+docker compose run --rm --no-deps indexer --config /config/taco.toml status
 ```
 
 추론 서비스가 준비되기 전에는 모델 다운로드나 로딩을 기다린다.
@@ -129,7 +132,15 @@ SSH 터널 대신 전용 도메인의 역방향 프록시를 사용한다면 `ta
 필요한 `allowed_origins`를 명시적으로 설정한다. 허용 대상을 넓히기 전에 TLS와 접근 권한을 확인한다.
 Qdrant 이미지는 [v1.19.0](https://github.com/qdrant/qdrant/releases/tag/v1.19.0)으로 고정했다.
 저장소나 클라이언트 버전을 바꿀 때는 양쪽의 호환 범위와 실제 API 동작을 함께 확인한다.
-도구는 `search`, `get_document`, `status` 세 가지이며 쓰기 도구나 셸을 제공하지 않는다.
+도구는 `search`, `keyword_search`, `deep_search`, `get_document`, `status`이며 쓰기 도구나 셸을 제공하지 않는다.
+[검색 가이드](retrieval.md)에 도구별 범위와 한도를 정리했다.
+
+Go stdio 서버를 직접 연결하려면 저장소에서 `make build` 후 `bin/mcp-stdio --config taco.toml`을 사용한다.
+stdio에는 HTTP 접속 토큰이 필요하지 않지만 모델·Qdrant에 인증이 있으면 설정한 자격 증명은 전달해야 한다.
+`uv run taco serve --transport stdio`도 같은 Go 바이너리로 전환한다.
+wheel만 설치한 환경은 Go 바이너리를 따로 준비해 PATH에 두거나 `MCP_STDIO_BIN`, `MCP_HTTP_BIN`으로 지정한다.
+HTTP·stdio 모두 같은 Go 검색 구현과 게시 장부를 사용한다.
+네이티브 실행은 `.env`를 자동으로 읽지 않는다. 필요한 자격 증명은 실행 환경의 비밀 설정으로 전달한다.
 
 현재 인증 단위는 배포 인스턴스 전체다. 접속자는 그 인스턴스의 모든 연결 자료를 읽을 수 있다.
 서로 다른 접근 권한이 필요한 데이터는 별도 인스턴스로 분리한다. 원본 시스템의 문서별 ACL을 자동 복제하지 않는다.
@@ -141,7 +152,7 @@ Qdrant 이미지는 [v1.19.0](https://github.com/qdrant/qdrant/releases/tag/v1.1
 ```sh
 docker compose ps
 docker compose logs --tail 100 inference mcp
-docker compose exec mcp taco --config /config/taco.toml status
+docker compose run --rm --no-deps indexer --config /config/taco.toml status
 ```
 
 분리 실행 중이면 같은 Compose 파일 조합을 사용하고 `reranker` 로그도 확인한다.
@@ -152,6 +163,7 @@ docker compose exec mcp taco --config /config/taco.toml status
 - 모델 로딩에 실패하면 고정 리비전, 디스크, VRAM과 모델별 실행 요구사항을 확인한다.
 - 인증 오류는 서버와 클라이언트의 토큰 설정을 대조한다. 토큰 자체를 로그에 출력하지 않는다.
 - 색인 오류는 `status`의 마지막 시도·성공 시각, 체크포인트, 오류와 정리 대기 수를 확인한다.
+- 키워드 색인이 없거나 모델 정보가 장부에 없으면 indexer에서 `sync`를 한 번 실행한다. 같은 모델이라면 기존 벡터는 유지한다.
 - 임베딩 모델이나 분할 설정을 바꾼 경우 `docs/models.md`의 재색인 절차를 따른다.
 - 실행 중 모델 정보가 사전 확인과 다르면 임베딩 응답을 거부한다. 로드밸런서 뒤의 모든 추론 서버가 같은 설정인지 먼저 확인한다.
 - `taco models --model-config models.toml`은 설정 검사다. 실제 실행 모델은 컨테이너 `doctor`와 검색 응답에서 별도로 확인한다.
@@ -164,9 +176,12 @@ docker compose exec mcp taco --config /config/taco.toml status
 
 ```sh
 uv sync --group dev --python 3.12
-uv run pytest
-uv run ruff check src tests scripts
+make build
+make test
+make check
 ```
 
-테스트는 가짜 추론과 로컬 Qdrant를 사용한다. 외부 계정이나 실제 GPU 가중치 실행 결과로 해석하지 않는다.
+테스트는 실제 Go 서버·Python 색인기와 가짜 추론·로컬 Qdrant를 연결한다.
+Go가 없으면 교차 언어 통합 테스트는 건너뛰므로 전체 계약 검증을 마친 것으로 보지 않는다.
+외부 계정이나 실제 GPU 가중치 실행 결과로 해석하지 않는다.
 실제 CUDA 검사는 [모델 연결 가이드](models.md#실제-gpu-추론-확인)에 별도로 설명했다.

@@ -8,17 +8,17 @@ from fastapi.testclient import TestClient
 from mcp import Client
 from qdrant_client import QdrantClient
 
-from taco_shell_rag.adapters.catalog import Catalog
-from taco_shell_rag.adapters.qdrant import QdrantIndex
-from taco_shell_rag.adapters.sources import FolderSource
-from taco_shell_rag.core.service import (
+from taco_shell_rag.gpu import GpuModels, create_app
+from taco_shell_rag.indexer.catalog import Catalog
+from taco_shell_rag.indexer.pipeline import (
     KnowledgeBase,
     require_gpu,
     require_reranker,
     validate_vectors,
 )
-from taco_shell_rag.gpu import GpuModels, create_app
-from taco_shell_rag.mcp_server import create_server
+from taco_shell_rag.indexer.sources import FolderSource
+from taco_shell_rag.indexer.vectorstore import QdrantIndex
+from tests.mcp_fixture import create_server
 
 # 기본 테스트에서는 가중치를 받거나 GPU를 사용하지 않는다.
 # Do not download weights or use a GPU unless the integration run is explicitly enabled.
