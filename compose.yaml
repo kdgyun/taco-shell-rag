@@ -44,32 +44,36 @@ services:
   mcp:
     build: .
     restart: unless-stopped
-    command: [--config, /config/taco.toml, serve]
+    command: [--config, /config/taco.toml]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     environment:
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?run scripts/bootstrap.py first}
     env_file: ["${RAG_ENV_FILE:-.env}"]
     volumes:
       - ${RAG_CONFIG_PATH:-./taco.toml}:/config/taco.toml:ro
-      - ${MODEL_CONFIG_PATH:-./models.toml}:/config/models.toml:ro
-      - ./examples/knowledge:/config/examples/knowledge:ro
       - state:/config/data
     ports:
       - "127.0.0.1:${MCP_PORT:-8080}:8080"
     depends_on:
       inference:
-        condition: service_healthy
+        condition: service_started
       qdrant:
         condition: service_started
     networks: [backend]
 
   indexer:
-    build: .
+    build:
+      context: .
+      target: indexer
     restart: unless-stopped
     profiles: [sync]
     env_file: ["${RAG_ENV_FILE:-.env}"]
     command: [--config, /config/taco.toml, sync, --watch]
     volumes:
       - ${RAG_CONFIG_PATH:-./taco.toml}:/config/taco.toml:ro
+      - ${MODEL_CONFIG_PATH:-./models.toml}:/config/models.toml:ro
       - ./examples/knowledge:/config/examples/knowledge:ro
       - state:/config/data
     depends_on:

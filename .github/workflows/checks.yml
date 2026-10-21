@@ -26,6 +26,10 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.1'
+          cache: true
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           version: "0.12.19"
@@ -36,9 +40,19 @@ jobs:
       - name: Install test dependencies
         run: uv sync --frozen --group dev --python '${{ matrix.python }}'
       - name: Contract tests
-        run: uv run --frozen pytest -q
+        run: |
+          go test -mod=readonly ./...
+          go vet -mod=readonly ./...
+          test -z "$(gofmt -l cmd internal)"
+          uv run --frozen pytest -q
       - name: Lint
         run: uv run --frozen ruff check src tests scripts
+      - name: Build and smoke-test installed services
+        if: matrix.python == '3.12'
+        run: |
+          docker build --target mcp -t taco-shell-rag:ci-mcp .
+          docker build --target indexer -t taco-shell-rag:ci-indexer .
+          docker run --rm --network none --mount type=bind,source="$PWD/tests",target=/checks,readonly --entrypoint python taco-shell-rag:ci-indexer /checks/container_smoke.py
       - name: Build and inspect distributions
         run: |
           uv build --out-dir dist

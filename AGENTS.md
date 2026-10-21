@@ -6,6 +6,11 @@ or deployment-local configuration.
 
 ## Boundaries
 
+- MCP transports, tool registration and retrieval run in Go under cmd/ and internal/.
+  Python indexer/, embedder/ and reranker/ live under src/taco_shell_rag/.
+  Keep answer generation in the client or optional agent, not the Go MCP server.
+- A retrieval-contract change must update both Go readers and Python publication
+  contracts, docs/retrieval.md and cross-language HTTP/stdio tests.
 - Core contracts and services must not import MCP, Qdrant, HTTP clients or model libraries.
 - Keep model roles, data sources and execution backends independently selectable.
   Defaults and presets are conveniences, not hidden dependencies or a custom-model allowlist.
@@ -32,8 +37,10 @@ Keep third-party attribution and licenses. Never invent test results or performa
 
 ## Validation
 
-Run `uv run pytest` and `uv run ruff check .`. Contract tests use fake inference;
-passing them is not a claim that CUDA, real models or GPU containers were tested.
+Run `uv run pytest` and `uv run ruff check .`. For Go changes, also run
+`go test -mod=readonly ./...` and `go vet -mod=readonly ./...`.
+Contract tests use fake inference; passing them is not a claim that CUDA,
+real models or GPU containers were tested.
 For deployment changes, validate Compose configuration and run the installation
 doctor. Do not use a production GPU server without explicit authorization.
 

@@ -9,6 +9,18 @@ chunk_size = 1000
 overlap = 120
 rerank = true
 
+# 검색 경로와 탐색 한도. 모델·연결 설정과 독립적으로 조절한다.
+# Retrieval strategy and bounds are independent of model and connector settings.
+[retrieval]
+mode = "hybrid"
+candidate_limit = 160
+rrf_k = 60
+dense_weight = 1.0
+keyword_weight = 1.0
+max_plan_terms = 6
+max_plan_sources = 4
+max_evidence_chars = 16000
+
 [[sources]]
 id = "handbook"
 type = "folder"

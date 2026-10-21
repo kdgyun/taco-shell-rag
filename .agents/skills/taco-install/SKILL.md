@@ -7,6 +7,9 @@ description: Install, connect or diagnose this repository's GPU RAG stack and op
 
 Read [the installation guide](../../../docs/install.md) before executing commands.
 For model selection or replacement, also read [model configuration](../../../docs/models.md).
+For MCP tools, hybrid/keyword/planned search or catalog upgrades, read
+[retrieval](../../../docs/retrieval.md). MCP and retrieval run in Go; collection,
+publication and GPU inference run in Python. Do not substitute the test-only Python MCP fixture.
 Resolve paths from the repository root; never assume the current directory is the root.
 
 Start by inspecting the host and existing deployment. This runtime requires Linux,
@@ -18,6 +21,8 @@ Reuse working image-provided drivers/toolkit packages; do not force past package
 For native package installation, select Python 3.12 explicitly with uv. The project
 supports Python 3.11 through 3.13; its pinned Torch 2.8 CUDA wheels do not support
 Python 3.14. The base Docker images already select Python 3.12.
+Docker builds the Go binaries. Native source installs also require Go 1.25+
+and `make build`; a Python wheel alone does not include platform-specific Go executables.
 
 Keep existing settings and data. Ask for the source directories or API contract,
 the intended GPU and deployment ports when unknown. Use `.env.example` for names
@@ -44,6 +49,13 @@ wait for inference readiness, run the container doctor, sync the example source,
 and verify both search and the exact-version document tool through MCP. A health
 check alone is not end-to-end verification. Report the commands actually run,
 the observed result, and anything skipped; do not invent successful CUDA checks.
+Use the indexer service for `taco models`, `doctor`, `sync`, `search` and local status.
+The MCP image contains Go servers, not the Python CLI. CLI search and HTTP agents use
+the same Go stdio implementation; Claude CLI connects to the configured HTTP server.
+Verify `keyword_search` without model calls and `deep_search` coverage/omission fields.
+An uninitialized keyword index or missing indexed model descriptor needs one normal
+`sync`, not volume deletion or forced re-embedding. Go opens the WAL catalog read-only;
+do not set SQLite immutable mode or assume a stale filesystem copy is current.
 
 Generation is optional and separate from embedding/reranking. Claude CLI ambient
 authentication, Anthropic API keys and local OpenAI-compatible endpoints are
