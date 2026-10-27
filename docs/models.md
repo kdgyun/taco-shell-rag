@@ -9,7 +9,8 @@
 | 재순위화 | CUDA CrossEncoder | `models.toml`의 `[reranker]` |
 | 생성 | 선택적 agent 앱 | provider, model, base_url, token_env, mode |
 
-기본 검색은 정규화된 dense 벡터와 선택적 재순위화를 사용한다. sparse·hybrid 검색은 지원하지 않는다.
+기본 검색은 정규화된 dense 벡터와 BM25를 결합하고 선택적으로 재순위화한다.
+모델 자체의 sparse 벡터는 사용하지 않는다. 검색 방식과 도구별 범위는 [검색 가이드](retrieval.md)를 참고한다.
 검색 응답에는 임베딩 공간과 실제 리랭커의 모델·리비전·실행 설정, 점수 종류, 실행 시간과 후보 제한이 담긴다.
 리랭커가 실패하면 다른 모델이나 cosine 점수로 조용히 대체하지 않는다.
 
@@ -163,10 +164,34 @@ RUN_GPU_TESTS=1 MODEL_CONFIG=models.toml \
 `INFERENCE_ROLE=embedding` 또는 `reranker`로 역할 하나만 검사할 수도 있다.
 기본 `pytest`에서는 이 검사를 건너뛴다. 명시적으로 실행했는데 CUDA가 없으면 실패하며 CPU로 바꾸지 않는다.
 
-검사 범위는 벡터 차원·정규화, 리랭커 점수, 추론 HTTP 응답과 데모 문서의 Python 게시·읽기 계약이다.
-실제 Go HTTP·stdio 연결은 기본 `tests/test_go_mcp.py`에서 테스트 대역 모델로 별도 검사한다.
-검사용 Qdrant는 메모리 모드다. 실제 Qdrant 서버·Docker 연결과 업무별 검색 품질은 별도로 확인한다.
+위 검사의 범위는 벡터 차원·정규화, 리랭커 점수, 추론 HTTP 응답과 데모 문서의 Python 게시·읽기 계약이다.
+검사용 Qdrant는 메모리 모드다. 기본 `tests/test_go_mcp.py`는 실제 Go HTTP·stdio 서버를 쓰되
+추론 서버와 Qdrant HTTP 응답은 테스트 대역으로 검사한다.
 사용하지 않는 역할의 검사는 건너뛰며 생성 모델은 호출하지 않는다.
+
+### Go MCP와 실제 GPU·Qdrant 연결 확인
+
+임베딩·리랭커가 준비된 추론 서버와 테스트용 Qdrant를 실행한 뒤 다음 검사를 수행한다.
+URL은 검사 프로세스에서 접근할 수 있어야 한다. 기본 Compose의 Qdrant·추론 서비스는
+호스트에 공개하지 않으므로 같은 Docker 네트워크에서 실행하거나 루프백 연결을 별도로 준비한다.
+검사를 위해 서비스 포트를 인터넷에 공개하지 않는다.
+
+```sh
+RUN_GO_GPU_TESTS=1 \
+GPU_TEST_INFERENCE_URL=http://127.0.0.1:8000 \
+GPU_TEST_QDRANT_URL=http://127.0.0.1:6333 \
+  uv run --frozen --python 3.12 --group dev pytest tests/integration/test_go_gpu.py -q
+```
+
+검사 프로세스에는 Go 도구 체인이 필요하다. 선택한 모델의 가중치를 다시 로딩하지 않고
+실행 중인 추론 API의 CUDA 모델·리비전과 실제 검색 응답을 대조한다. 분리 실행 중이면
+`GPU_TEST_RERANKER_URL`도 지정한다. 인증이 필요한 서버는 각각
+`GPU_TEST_EMBEDDING_TOKEN`, `GPU_TEST_RERANKER_TOKEN`, `GPU_TEST_QDRANT_TOKEN`으로 전달한다.
+
+매 실행마다 고유한 테스트 컬렉션과 임시 게시 장부를 만들고 종료 시 해당 컬렉션만 삭제한다.
+테스트용 Qdrant를 지정하고 컬렉션 생성·삭제 권한을 확인한다. HTTP·stdio 양쪽에서 하이브리드·dense·
+키워드·계획형 검색, 출처 필터, 정확한 버전의 원문 조회와 연결 중 게시 갱신을 확인한다.
+이 검사는 생성 모델이나 업무별 검색 정확도를 평가하지 않는다.
 
 ## Claude와 자체 호스팅 모델
 

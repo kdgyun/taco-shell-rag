@@ -1,13 +1,11 @@
 import json
 import os
-import shutil
 import socket
 import subprocess
 import threading
 import time
 from dataclasses import asdict, replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -20,27 +18,7 @@ from qdrant_client import models
 
 from taco_shell_rag.core.contracts import Document, Snapshot
 
-ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "contract-test-only-" + "x" * 48
-
-
-@pytest.fixture(scope="session")
-def go_binaries(tmp_path_factory):
-    if not shutil.which("go"):
-        pytest.skip("Go toolchain required for cross-language MCP integration")
-    directory = tmp_path_factory.mktemp("go-mcp-binaries")
-    binaries = {}
-    for name in ["http", "stdio"]:
-        binary = directory / f"mcp-{name}"
-        subprocess.run(
-            ["go", "build", "-mod=readonly", "-o", str(binary), f"./cmd/mcp-{name}"],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            timeout=180,
-        )
-        binaries[name] = str(binary)
-    return binaries
 
 
 @pytest.fixture

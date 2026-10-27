@@ -15,6 +15,8 @@ make check
 전체 검증에는 Go 도구 체인이 필요하다.
 CUDA 테스트는 `RUN_GPU_TESTS=1`로 별도 실행한다. 모델 다운로드와 GPU 사용이 발생하므로
 해당 호스트와 자원을 사용할 권한부터 확인한다. 실행하지 않은 검사를 통과했다고 기록하지 않는다.
+실행 중인 GPU 추론 서버와 Qdrant를 Go MCP까지 연결하는 검사는 `RUN_GO_GPU_TESTS=1`을 사용한다.
+접속 주소, 인증과 검사 범위는 [실제 GPU 연결 확인](docs/models.md#go-mcp와-실제-gpuqdrant-연결-확인)에 설명했다.
 
 ## 변경 위치
 

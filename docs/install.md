@@ -28,8 +28,7 @@ nvidia-smi
 새 클라우드 이미지의 커널이 드라이버보다 앞서 나가면 NVIDIA 모듈의 DKMS 빌드가 실패할 수 있다.
 드라이버 설치가 끝났다는 메시지만 보지 말고 `nvidia-smi`가 GPU를 반환하는지 확인한다.
 실패하면 DKMS 빌드 로그와 [NVIDIA 지원 환경](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/introduction.html)을 대조한다.
-GCP의 Ubuntu 24.04에서는 최신 커널을 무조건 올리기보다 `linux-gcp-lts-24.04` 같은
-LTS 커널과 호환 드라이버 조합을 먼저 검토한다.
+배포판에서 지원하는 LTS 커널과 호환 드라이버 조합을 먼저 검토한다.
 이 프로젝트는 기존 서버의 커널을 지우는 명령을 자동 실행하지 않는다.
 다른 서비스가 쓰는 드라이버를 재설치하는 명령도 자동 실행하지 않는다.
 커널 변경이 필요하면 새 커널의 부팅을 확인하기 전까지 기존 부팅 커널을 보존한다.
@@ -91,6 +90,9 @@ chmod 0755 examples/knowledge
 Dockerfile은 BuildKit 캐시 마운트를 사용한다. `docker buildx version`이 실패하면
 Docker 설치에 맞는 Buildx 플러그인을 준비한다. 다운로드 캐시는 실행 이미지와 분리하며
 소스만 바꾼 빌드는 기존 의존성 레이어를 재사용한다.
+빌드 캐시·실행 이미지·모델 가중치는 각각 디스크 공간을 사용한다.
+큰 CUDA 패키지는 다운로드 완료 뒤에도 설치와 이미지 저장이 이어진다.
+로그의 현재 단계와 디스크 여유를 함께 확인한다.
 
 ## 기동과 확인
 

@@ -1,4 +1,8 @@
+import os
+import shutil
+import subprocess
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 from qdrant_client import QdrantClient
@@ -12,6 +16,27 @@ from taco_shell_rag.core.contracts import (
 from taco_shell_rag.indexer.catalog import Catalog
 from taco_shell_rag.indexer.pipeline import KnowledgeBase
 from taco_shell_rag.indexer.vectorstore import QdrantIndex
+
+
+@pytest.fixture(scope="session")
+def go_binaries(tmp_path_factory):
+    if not shutil.which("go"):
+        if os.environ.get("RUN_GO_GPU_TESTS") == "1":
+            pytest.fail("Go toolchain is required for the requested GPU MCP verification")
+        pytest.skip("Go toolchain required for cross-language MCP integration")
+    directory = tmp_path_factory.mktemp("go-mcp-binaries")
+    binaries = {}
+    for name in ["http", "stdio"]:
+        binary = directory / f"mcp-{name}"
+        subprocess.run(
+            ["go", "build", "-mod=readonly", "-o", str(binary), f"./cmd/mcp-{name}"],
+            cwd=Path(__file__).resolve().parents[1],
+            check=True,
+            capture_output=True,
+            timeout=180,
+        )
+        binaries[name] = str(binary)
+    return binaries
 
 
 class FakeEmbedder:
